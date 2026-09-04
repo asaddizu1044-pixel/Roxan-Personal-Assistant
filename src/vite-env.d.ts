@@ -1,8 +1,10 @@
-cat > src/vite-env.d.ts << 'EOF'
 /// <reference types="vite/client" />
 
-declare module '*.css' {
-  const content: string;
-  export default content;
+interface ImportMetaEnv {
+  readonly VITE_API_URL: string;
+  // Add other environment variables here
 }
-EOF
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
