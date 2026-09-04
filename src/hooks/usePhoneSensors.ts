@@ -16,9 +16,10 @@ type SensorSnapshot = {
   permissionError: string | null;
 };
 
-const STEP_THRESHOLD = 1.25;
-const STEP_COOLDOWN_MS = 280;
-const STEP_THRESHOLD_COUNT = 10; // ✅ Smartwatch 10-step rule
+// ✅ FIX 1: More sensitive thresholds
+const STEP_THRESHOLD = 0.8;           // Pehle: 1.25
+const STEP_COOLDOWN_MS = 200;         // Pehle: 280
+const STEP_THRESHOLD_COUNT = 10;
 const DEFAULT_STRIDE_METERS = 0.74;
 
 export function usePhoneSensors() {
@@ -43,8 +44,6 @@ export function usePhoneSensors() {
   const gpsDistance = useRef(0);
   const motionSamples = useRef<number[]>([]);
   const watchIdRef = useRef<number | null>(null);
-  
-  // ✅ Threshold tracking refs
   const pendingSteps = useRef(0);
   const thresholdMet = useRef(false);
   const lastStepTime = useRef(0);
@@ -63,12 +62,9 @@ export function usePhoneSensors() {
   const stop = useCallback(() => {
     setStartedAt(null);
     setSnapshot((current) => ({ ...current, state: "idle", speedKmh: 0, activity: "stationary" }));
-    
-    // Reset threshold
     pendingSteps.current = 0;
     thresholdMet.current = false;
     stepCount.current = 0;
-    
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -88,12 +84,10 @@ export function usePhoneSensors() {
     setSnapshot((current) => ({ ...current, state: "requesting", permissionError: null }));
 
     try {
-      // Motion permission (Safari only)
       try {
-        const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & { 
-          requestPermission?: () => Promise<string> 
+        const motion = window.DeviceMotionEvent as typeof DeviceMotionEvent & {
+          requestPermission?: () => Promise<string>
         };
-        
         if (motion.requestPermission) {
           const permission = await motion.requestPermission();
           if (permission !== "granted") {
@@ -104,7 +98,6 @@ export function usePhoneSensors() {
         // Motion permission not supported - continue
       }
 
-      // GPS permission
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           resolve,
@@ -113,7 +106,6 @@ export function usePhoneSensors() {
         );
       });
 
-      // Reset state
       stepCount.current = 0;
       gpsDistance.current = 0;
       pendingSteps.current = 0;
@@ -150,7 +142,6 @@ export function usePhoneSensors() {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
-      
       watchIdRef.current = navigator.geolocation.watchPosition(
         onPosition,
         onGpsError,
@@ -174,51 +165,55 @@ export function usePhoneSensors() {
   const onMotion = useCallback((event: DeviceMotionEvent) => {
     const acceleration = event.accelerationIncludingGravity;
     if (!acceleration) return;
-    
+
     const magnitude = Math.sqrt(
-      (acceleration.x ?? 0) ** 2 + 
-      (acceleration.y ?? 0) ** 2 + 
+      (acceleration.x ?? 0) ** 2 +
+      (acceleration.y ?? 0) ** 2 +
       (acceleration.z ?? 0) ** 2
     );
     const dynamicMagnitude = Math.abs(magnitude - 9.81);
     motionSamples.current = [...motionSamples.current.slice(-19), dynamicMagnitude];
-    
+
     const now = Date.now();
-    
-    // ✅ Reset threshold if user stopped for more than 5 seconds
+
     if (now - lastStepTime.current > 5000 && lastStepTime.current > 0) {
       pendingSteps.current = 0;
       thresholdMet.current = false;
     }
-    
+
     if (dynamicMagnitude > STEP_THRESHOLD && now - lastStepAt.current > STEP_COOLDOWN_MS) {
       lastStepAt.current = now;
       lastStepTime.current = now;
-      
-      // ✅ Smartwatch 10-step threshold logic
+
       if (!thresholdMet.current) {
         pendingSteps.current += 1;
-        
         if (pendingSteps.current >= STEP_THRESHOLD_COUNT) {
-          // ✅ Threshold met! Show all pending steps
           thresholdMet.current = true;
           stepCount.current = pendingSteps.current;
           pendingSteps.current = 0;
         }
       } else {
-        // ✅ Threshold already met - count normally
         stepCount.current += 1;
       }
-      
+
       const averageMotion = motionSamples.current.reduce((sum, val) => sum + val, 0) / motionSamples.current.length;
       const nextActivity = classifyActivity(averageMotion, dynamicMagnitude, lastSpeed.current);
       const minutes = Math.max(0.1, (now - (startedAt || now)) / 60000);
-      
+
+      // ✅ FIX 2: Calories with BMR
+      const caloriesBurned = estimateCalories(
+        nextActivity,
+        minutes,
+        70,    // weight (kg)
+        30,    // age (years)
+        "male" // gender
+      );
+
       setSnapshot((current) => ({
         ...current,
         steps: stepCount.current,
         distanceMeters: Math.max(gpsDistance.current, strideDistanceMeters(stepCount.current, DEFAULT_STRIDE_METERS)),
-        calories: estimateCalories(nextActivity, minutes),
+        calories: caloriesBurned,
         activity: nextActivity,
       }));
     }
@@ -237,12 +232,12 @@ export function usePhoneSensors() {
     const delta = previous ? haversineMeters(previous, next) : 0;
     const seconds = previousAt ? Math.max(1, (now - previousAt) / 1000) : 0;
     const speedKmh = seconds ? (delta / seconds) * 3.6 : 0;
-    
+
     gpsDistance.current += delta;
     lastSpeed.current = speedKmh;
     lastCoordinates.current = next;
     lastLocationAt.current = now;
-    
+
     setSnapshot((current) => ({
       ...current,
       coordinates: next,
@@ -260,12 +255,29 @@ export function usePhoneSensors() {
     }));
   }, []);
 
-  // Helper functions
+  // ✅ FIX 3: Better Activity Classification
   function classifyActivity(avgMotion: number, peak: number, speed: number): ActivityKind {
-    if (avgMotion < 0.35 && peak < 0.8) return "stationary";
-    if (avgMotion >= 3.0 || peak >= 4.4) return speed > 12 ? "cycling" : "running";
-    if (avgMotion >= 1.55 || peak >= 2.4) return speed > 12 ? "cycling" : "running";
-    if (avgMotion >= 0.7 || peak >= 1.25) return "walking";
+    // Stationary - No movement
+    if (avgMotion < 0.3 && peak < 0.6) {
+      return "stationary";
+    }
+
+    // Walking - Medium movement (0.3 - 1.5)
+    if (avgMotion >= 0.3 && avgMotion < 1.5 && peak < 2.0) {
+      return "walking";
+    }
+
+    // Running or Cycling - High movement
+    if (avgMotion >= 1.5 || peak >= 2.5) {
+      return speed > 12 ? "cycling" : "running";
+    }
+
+    // Cycling - Fast speed with moderate motion
+    if (speed > 12 && avgMotion >= 0.8) {
+      return "cycling";
+    }
+
+    // Default - Exercise
     return "exercise";
   }
 
@@ -273,7 +285,14 @@ export function usePhoneSensors() {
     return Math.max(0, steps) * stride;
   }
 
-  function estimateCalories(activity: ActivityKind, minutes: number) {
+  // ✅ FIX 4: BMR-based calories formula
+  function estimateCalories(
+    activity: ActivityKind,
+    minutes: number,
+    weight: number = 70,
+    age: number = 30,
+    gender: "male" | "female" = "male"
+  ) {
     const MET: Record<ActivityKind, number> = {
       stationary: 1.3,
       walking: 3.5,
@@ -281,7 +300,21 @@ export function usePhoneSensors() {
       cycling: 7.5,
       exercise: 5.5,
     };
-    return Math.round((MET[activity] * 3.5 * 70 * minutes) / 200);
+
+    // BMR Calculation (Mifflin-St Jeor)
+    let bmr: number;
+    const height = gender === "male" ? 170 : 160;
+
+    if (gender === "male") {
+      bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+    } else {
+      bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+    }
+
+    // Activity Calories = (MET × BMR × minutes) / 1440
+    const activityCalories = (MET[activity] * bmr * minutes) / 1440;
+
+    return Math.round(activityCalories);
   }
 
   function haversineMeters(from: Coordinates, to: Coordinates) {
@@ -290,7 +323,9 @@ export function usePhoneSensors() {
     const lat2 = (to.latitude * Math.PI) / 180;
     const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
     const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
-    const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) ** 2;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) *
+      Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
