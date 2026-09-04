@@ -15,14 +15,14 @@ const queryClient = new QueryClient({
   },
 })
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: 'http://localhost:4000/api/trpc',
+      url: `${API_URL}/api/trpc`,
     }),
   ],
 })
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
