@@ -14,15 +14,18 @@ const queryClient = new QueryClient({
     },
   },
 })
-const API_URL = '/api';
+
+// ✅ Fix: Remove extra /api
+const API_URL = '';  // Empty string
 
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: `${API_URL}/api/trpc`,
+      url: `${API_URL}/api/trpc`,  // ✅ "/api/trpc" banega
     }),
   ],
 })
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
