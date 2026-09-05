@@ -6,10 +6,8 @@ import { z } from 'zod';
 import { connectMongoDB, getDb } from '../server/mongodb.js';
 
 let currentUser: any = null;
-
 const t = initTRPC.create();
 
-// ✅ Complete Router
 const appRouter = t.router({
   auth: t.router({
     me: t.procedure.query(async () => {
@@ -54,6 +52,7 @@ const appRouter = t.router({
             const result = await db.collection('users').insertOne(newUser);
             user = { _id: result.insertedId, ...newUser };
             console.log("✅ New user created:", input.name);
+            console.log("✅ New user saved with _id:", user._id);
           } else {
             await db.collection('users').updateOne(
               { _id: user._id },
@@ -78,7 +77,7 @@ const appRouter = t.router({
           };
         } catch (error) {
           console.error("❌ Login error:", error);
-          throw new Error("Login failed");
+          throw error;
         }
       }),
 
@@ -198,8 +197,16 @@ const appRouter = t.router({
 // ✅ Create Express app
 const app = express();
 
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.use(express.json({
+  limit: '10mb',
+}));
 
 // ✅ Health check
 app.get('/api/health', async (req, res) => {
@@ -215,7 +222,8 @@ app.get('/api/health', async (req, res) => {
     console.error("❌ Health check error:", error);
     res.status(500).json({
       status: 'error',
-      error: 'Database connection failed'
+      error: 'Database connection failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -228,6 +236,17 @@ app.use('/api/trpc', createExpressMiddleware({
     return { req, res };
   },
 }));
+
+// ✅ Handle 404
+app.use((req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
+});
+
+// ✅ Error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("❌ Error:", err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
 
 // ✅ Export for Vercel
 export default app;
