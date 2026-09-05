@@ -9,10 +9,11 @@ let currentUser: any = null;
 
 const t = initTRPC.create();
 
+// ✅ Complete Router
 const appRouter = t.router({
   auth: t.router({
     me: t.procedure.query(async () => {
-      console.log("📡 ME query called");
+      console.log("📡 ME query called - currentUser:", currentUser?.name || "null");
       if (currentUser) {
         return {
           id: currentUser._id.toString(),
@@ -28,52 +29,59 @@ const appRouter = t.router({
       }
       return null;
     }),
-    
+
     login: t.procedure
       .input(z.object({ name: z.string().min(1) }))
       .mutation(async ({ input }) => {
         console.log("🔑 Login request for:", input.name);
-        const db = await getDb();
-        const now = new Date();
-        
-        let user = await db.collection('users').findOne({ name: input.name });
-        
-        if (!user) {
-          const newUser = {
-            openId: `user-${Date.now()}`,
-            name: input.name,
-            email: `${input.name.toLowerCase().replace(/\s/g, '.')}@example.com`,
-            loginMethod: "manual",
-            role: "user",
-            createdAt: now,
-            updatedAt: now,
-            lastSignedIn: now,
+        try {
+          const db = await getDb();
+          const now = new Date();
+
+          let user = await db.collection('users').findOne({ name: input.name });
+
+          if (!user) {
+            const newUser = {
+              openId: `user-${Date.now()}`,
+              name: input.name,
+              email: `${input.name.toLowerCase().replace(/\s/g, '.')}@example.com`,
+              loginMethod: "manual",
+              role: "user",
+              createdAt: now,
+              updatedAt: now,
+              lastSignedIn: now,
+            };
+            const result = await db.collection('users').insertOne(newUser);
+            user = { _id: result.insertedId, ...newUser };
+            console.log("✅ New user created:", input.name);
+          } else {
+            await db.collection('users').updateOne(
+              { _id: user._id },
+              { $set: { lastSignedIn: now, updatedAt: now } }
+            );
+            console.log("✅ Existing user logged in:", input.name);
+          }
+
+          currentUser = user;
+          console.log("✅ Login successful for:", input.name);
+
+          return {
+            id: user._id.toString(),
+            openId: user.openId,
+            name: user.name,
+            email: user.email,
+            loginMethod: user.loginMethod,
+            role: user.role,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            lastSignedIn: user.lastSignedIn,
           };
-          const result = await db.collection('users').insertOne(newUser);
-          user = { _id: result.insertedId, ...newUser };
-          console.log("✅ New user created:", input.name);
-        } else {
-          await db.collection('users').updateOne(
-            { _id: user._id },
-            { $set: { lastSignedIn: now, updatedAt: now } }
-          );
-          console.log("✅ Existing user logged in:", input.name);
+        } catch (error) {
+          console.error("❌ Login error:", error);
+          throw new Error("Login failed");
         }
-        
-        currentUser = user;
-        return {
-          id: user._id.toString(),
-          openId: user.openId,
-          name: user.name,
-          email: user.email,
-          loginMethod: user.loginMethod,
-          role: user.role,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          lastSignedIn: user.lastSignedIn,
-        };
       }),
-      
+
     logout: t.procedure.mutation(() => {
       console.log("🔑 Logout called");
       currentUser = null;
@@ -93,7 +101,7 @@ const appRouter = t.router({
           })
           .sort({ recordedAt: 1 })
           .toArray();
-        
+
         return records.map((r: any) => ({
           id: r._id.toString(),
           ...r,
@@ -122,10 +130,10 @@ const appRouter = t.router({
         console.log("📤 Sync request:", input.records.length, "records");
         const db = await getDb();
         const now = new Date();
-        
+
         const allUsers = await db.collection('users').find().toArray();
         const userId = allUsers.length > 0 ? allUsers[0]._id : 1;
-        
+
         let accepted = 0;
         for (const record of input.records || []) {
           const result = await db.collection('activity_records').updateOne(
@@ -162,7 +170,7 @@ const appRouter = t.router({
         );
 
         console.log(`📤 Synced ${accepted} records to MongoDB`);
-        
+
         return {
           accepted,
           duplicates: input.records?.length - accepted || 0,
@@ -198,10 +206,17 @@ app.get('/api/health', async (req, res) => {
   try {
     const db = await getDb();
     await db.command({ ping: 1 });
-    res.json({ status: 'ok', database: 'MongoDB Atlas', timestamp: Date.now() });
+    res.json({
+      status: 'ok',
+      database: 'MongoDB Atlas',
+      timestamp: Date.now()
+    });
   } catch (error) {
     console.error("❌ Health check error:", error);
-    res.status(500).json({ status: 'error', error: 'Database connection failed' });
+    res.status(500).json({
+      status: 'error',
+      error: 'Database connection failed'
+    });
   }
 });
 
