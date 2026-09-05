@@ -12,6 +12,7 @@ const t = initTRPC.create();
 const appRouter = t.router({
   auth: t.router({
     me: t.procedure.query(async () => {
+      console.log("📡 ME query called");
       if (currentUser) {
         return {
           id: currentUser._id.toString(),
@@ -31,6 +32,7 @@ const appRouter = t.router({
     login: t.procedure
       .input(z.object({ name: z.string().min(1) }))
       .mutation(async ({ input }) => {
+        console.log("🔑 Login request for:", input.name);
         const db = await getDb();
         const now = new Date();
         
@@ -49,11 +51,13 @@ const appRouter = t.router({
           };
           const result = await db.collection('users').insertOne(newUser);
           user = { _id: result.insertedId, ...newUser };
+          console.log("✅ New user created:", input.name);
         } else {
           await db.collection('users').updateOne(
             { _id: user._id },
             { $set: { lastSignedIn: now, updatedAt: now } }
           );
+          console.log("✅ Existing user logged in:", input.name);
         }
         
         currentUser = user;
@@ -71,6 +75,7 @@ const appRouter = t.router({
       }),
       
     logout: t.procedure.mutation(() => {
+      console.log("🔑 Logout called");
       currentUser = null;
       return { success: true };
     }),
@@ -80,6 +85,7 @@ const appRouter = t.router({
     history: t.procedure
       .input(z.object({ from: z.number(), to: z.number() }))
       .query(async ({ input }) => {
+        console.log("📊 History request:", input.from, input.to);
         const db = await getDb();
         const records = await db.collection('activity_records')
           .find({
@@ -113,6 +119,7 @@ const appRouter = t.router({
         })),
       }))
       .mutation(async ({ input }) => {
+        console.log("📤 Sync request:", input.records.length, "records");
         const db = await getDb();
         const now = new Date();
         
@@ -166,6 +173,7 @@ const appRouter = t.router({
     syncStatus: t.procedure
       .input(z.object({ source: z.enum(["phone", "watch", "wearable"]), deviceId: z.string() }))
       .query(async ({ input }) => {
+        console.log("📡 Sync status for:", input.source, input.deviceId);
         const db = await getDb();
         const cursor = await db.collection('sync_cursors').findOne({
           source: input.source,
@@ -179,26 +187,32 @@ const appRouter = t.router({
   }),
 });
 
-export default async function handler(req: any, res: any) {
-  const app = express();
-  
-  app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json());
-  
-  app.use('/api/trpc', createExpressMiddleware({
-    router: appRouter,
-    createContext: ({ req, res }) => ({ req, res }),
-  }));
-  
-  app.get('/api/health', async (req, res) => {
-    try {
-      const db = await getDb();
-      await db.command({ ping: 1 });
-      res.json({ status: 'ok', database: 'MongoDB Atlas', timestamp: Date.now() });
-    } catch (error) {
-      res.status(500).json({ status: 'error', error: 'Database connection failed' });
-    }
-  });
-  
-  return app(req, res);
-}
+// ✅ Create Express app
+const app = express();
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+
+// ✅ Health check
+app.get('/api/health', async (req, res) => {
+  try {
+    const db = await getDb();
+    await db.command({ ping: 1 });
+    res.json({ status: 'ok', database: 'MongoDB Atlas', timestamp: Date.now() });
+  } catch (error) {
+    console.error("❌ Health check error:", error);
+    res.status(500).json({ status: 'error', error: 'Database connection failed' });
+  }
+});
+
+// ✅ tRPC middleware
+app.use('/api/trpc', createExpressMiddleware({
+  router: appRouter,
+  createContext: ({ req, res }) => {
+    console.log("📡 tRPC request:", req.method, req.url);
+    return { req, res };
+  },
+}));
+
+// ✅ Export for Vercel
+export default app;
