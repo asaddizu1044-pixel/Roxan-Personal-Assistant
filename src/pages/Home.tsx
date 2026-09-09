@@ -38,7 +38,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import WeightPromptModal from "@/components/WeightPromptModal";
-import LoginModal from "@/components/LoginModal"; // ✅ IMPORT ADDED
+import LoginModal from "@/components/LoginModal";
 
 const routeTextureUrl = "/manus-storage/real-personal-tracker-route-texture_1027fb1e.png";
 const recoveryArtUrl = "/manus-storage/real-personal-tracker-recovery-art_b09e2d2c.png";
@@ -222,6 +222,7 @@ export default function Home() {
   // Weight Prompt States
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
   const [sessionCalories, setSessionCalories] = useState<number | null>(null);
+  const [sessionData, setSessionData] = useState<any>(null);
 
   // useRefs for Click Outside
   const sleepEditorRef = useRef<HTMLDivElement>(null);
@@ -503,6 +504,38 @@ export default function Home() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const syncSessionWithWeight = async (session: any, actualCalories: number) => {
+    const updatedSession = {
+      ...session,
+      calories: actualCalories,
+    };
+
+    setRestSyncing(true);
+    setRestSyncError(null);
+    
+    try {
+      const response = await fetch(
+        "/api/trpc/activity.sync",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ json: buildPhoneSyncPayload(updatedSession) }),
+        },
+      );
+      if (!response.ok) throw new Error("Activity sync request failed");
+      await historyQuery.refetch();
+      await syncStatusQuery.refetch();
+      console.log("✅ Session synced with weight:", actualCalories);
+    } catch (error) {
+      setRestSyncError(
+        error instanceof Error ? error.message : "Activity sync unavailable",
+      );
+    } finally {
+      setRestSyncing(false);
+    }
+  };
+
   const toggleTracking = async () => {
     if (isTracking) {
       // Stop tracking
@@ -526,33 +559,11 @@ export default function Home() {
         };
 
         setSessionCalories(phoneSensors.calories);
+        setSessionData(session);
         setShowWeightPrompt(true);
 
         if (!phoneSensors.isOnline) {
           queueSensorSession(session);
-        } else if (isAuthenticated) {
-          setRestSyncing(true);
-          setRestSyncError(null);
-          try {
-            const response = await fetch(
-              "http://localhost:4000/api/trpc/activity.sync",
-              {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ json: buildPhoneSyncPayload(session) }),
-              },
-            );
-            if (!response.ok) throw new Error("Activity sync request failed");
-            await historyQuery.refetch();
-            await syncStatusQuery.refetch();
-          } catch (error) {
-            setRestSyncError(
-              error instanceof Error ? error.message : "Activity sync unavailable",
-            );
-          } finally {
-            setRestSyncing(false);
-          }
         }
       }
       return;
@@ -1489,7 +1500,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* ✅ Login Modal - ADDED */}
+          {/* Login Modal */}
           <LoginModal
             isOpen={showLoginModal}
             onClose={() => {
@@ -1506,10 +1517,28 @@ export default function Home() {
           {/* Weight Prompt Modal */}
           <WeightPromptModal
             isOpen={showWeightPrompt}
-            onClose={() => setShowWeightPrompt(false)}
+            onClose={() => {
+              setShowWeightPrompt(false);
+              setSessionData(null);
+            }}
             onSave={(weight) => {
-              console.log("Weight saved:", weight);
-              // Recalculate calories with actual weight
+              console.log("✅ Weight saved:", weight);
+              
+              if (sessionCalories !== null) {
+                const actualCalories = Math.round(sessionCalories * (weight / 70));
+                console.log("🔥 Updated calories:", actualCalories);
+                
+                // Show calories to user
+                alert(`🔥 You burned approximately ${actualCalories} kcal!`);
+                
+                // NOW sync the data with updated calories
+                if (sessionData && isAuthenticated) {
+                  syncSessionWithWeight(sessionData, actualCalories);
+                }
+              }
+              
+              setShowWeightPrompt(false);
+              setSessionData(null);
             }}
             calories={sessionCalories}
             steps={phoneSensors.steps}

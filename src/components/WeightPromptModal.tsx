@@ -24,6 +24,7 @@ export default function WeightPromptModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("📤 Weight submitted:", weight);
     if (weight > 0) {
       onSave(weight);
       onClose();
