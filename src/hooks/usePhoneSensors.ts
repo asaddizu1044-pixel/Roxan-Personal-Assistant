@@ -255,32 +255,25 @@ export function usePhoneSensors() {
     }));
   }, []);
 
-  // ✅ FIX 3: Better Activity Classification
   function classifyActivity(avgMotion: number, peak: number, speed: number): ActivityKind {
-    // Stationary - No movement
-    if (avgMotion < 0.3 && peak < 0.6) {
-      return "stationary";
-    }
+ 
+  if (avgMotion < 0.3 && peak < 0.6) return "stationary";
+ 
+  if (speed < 2.0) return "stationary";
+ 
+  if (speed >= 2.0 && speed < 8.0) return "walking";
+  
 
-    // Walking - Medium movement (0.3 - 1.5)
-    if (avgMotion >= 0.3 && avgMotion < 1.5 && peak < 2.0) {
-      return "walking";
-    }
-
-    // Running or Cycling - High movement
-    if (avgMotion >= 1.5 || peak >= 2.5) {
-      return speed > 12 ? "cycling" : "running";
-    }
-
-    // Cycling - Fast speed with moderate motion
-    if (speed > 12 && avgMotion >= 0.8) {
-      return "cycling";
-    }
-
-    // Default - Exercise
-    return "exercise";
-  }
-
+  if (speed >= 8.0 && speed < 12.0) return "running";
+  
+  if (speed >= 12.0) return "cycling";
+  
+ 
+  if (avgMotion >= 1.5 || peak >= 2.5) return "running";
+  if (avgMotion >= 0.3 && avgMotion < 1.5 && peak < 2.0) return "walking";
+  
+  return "exercise";
+}
   function strideDistanceMeters(steps: number, stride: number) {
     return Math.max(0, steps) * stride;
   }
