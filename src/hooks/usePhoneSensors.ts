@@ -16,9 +16,9 @@ type SensorSnapshot = {
   permissionError: string | null;
 };
 
-// ✅ FIX 1: More sensitive thresholds
-const STEP_THRESHOLD = 0.8;           // Pehle: 1.25
-const STEP_COOLDOWN_MS = 200;         // Pehle: 280
+// ✅ Step detection thresholds (for step counting only)
+const STEP_THRESHOLD = 0.8;
+const STEP_COOLDOWN_MS = 200;
 const STEP_THRESHOLD_COUNT = 10;
 const DEFAULT_STRIDE_METERS = 0.74;
 
@@ -65,6 +65,7 @@ export function usePhoneSensors() {
     pendingSteps.current = 0;
     thresholdMet.current = false;
     stepCount.current = 0;
+    gpsDistance.current = 0;
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -161,7 +162,7 @@ export function usePhoneSensors() {
     }
   }, []);
 
-  // ✅ Motion handler with 10-step threshold
+  // Motion handler with 10-step threshold
   const onMotion = useCallback((event: DeviceMotionEvent) => {
     const acceleration = event.accelerationIncludingGravity;
     if (!acceleration) return;
@@ -200,26 +201,26 @@ export function usePhoneSensors() {
       const nextActivity = classifyActivity(averageMotion, dynamicMagnitude, lastSpeed.current);
       const minutes = Math.max(0.1, (now - (startedAt || now)) / 60000);
 
-      // ✅ FIX 2: Calories with BMR
       const caloriesBurned = estimateCalories(
         nextActivity,
         minutes,
-        70,    // weight (kg)
-        30,    // age (years)
-        "male" // gender
+        70,
+        30,
+        "male"
       );
 
       setSnapshot((current) => ({
         ...current,
         steps: stepCount.current,
-        distanceMeters: Math.max(gpsDistance.current, strideDistanceMeters(stepCount.current, DEFAULT_STRIDE_METERS)),
+        // ✅ GPS distance primary, step fallback only if GPS unavailable
+        distanceMeters: gpsDistance.current > 0 ? gpsDistance.current : strideDistanceMeters(stepCount.current, DEFAULT_STRIDE_METERS),
         calories: caloriesBurned,
         activity: nextActivity,
       }));
     }
   }, [startedAt]);
 
-  // GPS position handler
+  // ✅ GPS position handler - ACCURATE distance and speed
   const onPosition = useCallback((position: GeolocationPosition) => {
     const next = {
       latitude: position.coords.latitude,
@@ -229,6 +230,8 @@ export function usePhoneSensors() {
     const now = Date.now();
     const previous = lastCoordinates.current;
     const previousAt = lastLocationAt.current;
+
+    // ✅ GPS distance calculation (accurate, no threshold)
     const delta = previous ? haversineMeters(previous, next) : 0;
     const seconds = previousAt ? Math.max(1, (now - previousAt) / 1000) : 0;
     const speedKmh = seconds ? (delta / seconds) * 3.6 : 0;
@@ -242,7 +245,8 @@ export function usePhoneSensors() {
       ...current,
       coordinates: next,
       route: [...current.route.slice(-399), next],
-      distanceMeters: Math.max(gpsDistance.current, strideDistanceMeters(current.steps, DEFAULT_STRIDE_METERS)),
+      // ✅ GPS distance primary, step fallback only if GPS unavailable
+      distanceMeters: gpsDistance.current > 0 ? gpsDistance.current : strideDistanceMeters(current.steps, DEFAULT_STRIDE_METERS),
       speedKmh: speedKmh,
     }));
   }, []);
@@ -255,30 +259,33 @@ export function usePhoneSensors() {
     }));
   }, []);
 
+  // ✅ Speed-based activity classification (no threshold issue)
   function classifyActivity(avgMotion: number, peak: number, speed: number): ActivityKind {
- 
-  if (avgMotion < 0.3 && peak < 0.6) return "stationary";
- 
-  if (speed < 2.0) return "stationary";
- 
-  if (speed >= 2.0 && speed < 8.0) return "walking";
-  
+    // Stationary - No movement or very slow
+    if (avgMotion < 0.3 && peak < 0.6) return "stationary";
+    if (speed < 2.0) return "stationary";
 
-  if (speed >= 8.0 && speed < 12.0) return "running";
-  
-  if (speed >= 12.0) return "cycling";
-  
- 
-  if (avgMotion >= 1.5 || peak >= 2.5) return "running";
-  if (avgMotion >= 0.3 && avgMotion < 1.5 && peak < 2.0) return "walking";
-  
-  return "exercise";
-}
+    // Walking (2.0 - 8.0 km/h)
+    if (speed >= 2.0 && speed < 8.0) return "walking";
+
+    // Running (8.0 - 12.0 km/h)
+    if (speed >= 8.0 && speed < 12.0) return "running";
+
+    // Cycling (12.0+ km/h)
+    if (speed >= 12.0) return "cycling";
+
+    // Motion-based fallback
+    if (avgMotion >= 1.5 || peak >= 2.5) return "running";
+    if (avgMotion >= 0.3 && avgMotion < 1.5 && peak < 2.0) return "walking";
+
+    return "exercise";
+  }
+
   function strideDistanceMeters(steps: number, stride: number) {
     return Math.max(0, steps) * stride;
   }
 
-  // ✅ FIX 4: BMR-based calories formula
+  // ✅ BMR-based calories formula
   function estimateCalories(
     activity: ActivityKind,
     minutes: number,
@@ -294,7 +301,6 @@ export function usePhoneSensors() {
       exercise: 5.5,
     };
 
-    // BMR Calculation (Mifflin-St Jeor)
     let bmr: number;
     const height = gender === "male" ? 170 : 160;
 
@@ -304,9 +310,7 @@ export function usePhoneSensors() {
       bmr = 10 * weight + 6.25 * height - 5 * age - 161;
     }
 
-    // Activity Calories = (MET × BMR × minutes) / 1440
     const activityCalories = (MET[activity] * bmr * minutes) / 1440;
-
     return Math.round(activityCalories);
   }
 

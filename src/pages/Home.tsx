@@ -504,6 +504,7 @@ export default function Home() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // ✅ Sync function - uses relative URL for Vercel
   const syncSessionWithWeight = async (session: any, actualCalories: number) => {
     const updatedSession = {
       ...session,
@@ -514,6 +515,7 @@ export default function Home() {
     setRestSyncError(null);
     
     try {
+      // ✅ Relative URL for Vercel
       const response = await fetch(
         "/api/trpc/activity.sync",
         {
@@ -536,6 +538,7 @@ export default function Home() {
     }
   };
 
+  // ✅ Toggle tracking - weight prompt first, sync after
   const toggleTracking = async () => {
     if (isTracking) {
       // Stop tracking
@@ -558,10 +561,12 @@ export default function Home() {
           route: phoneSensors.route,
         };
 
+        // ✅ Save session data, show weight prompt FIRST
         setSessionCalories(phoneSensors.calories);
         setSessionData(session);
         setShowWeightPrompt(true);
 
+        // ✅ If offline, queue immediately
         if (!phoneSensors.isOnline) {
           queueSensorSession(session);
         }
