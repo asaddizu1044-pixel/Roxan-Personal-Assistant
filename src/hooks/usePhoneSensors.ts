@@ -77,8 +77,15 @@ export function usePhoneSensors() {
 
   const startedAtRef = useRef<number | null>(null);
 
+  // Existing motion refs
   const lastStepAt = useRef(0);
   const lastMotionValue = useRef(0);
+
+  // New motion refs for robust step detection
+  const previousMotionValue = useRef(0);
+  const previousPreviousMotionValue = useRef(0);
+  const lastStepPeak = useRef(0);
+
   const lastCoordinates = useRef<Coordinates | null>(null);
   const lastLocationAt = useRef<number | null>(null);
 
@@ -215,11 +222,6 @@ export function usePhoneSensors() {
           ? speed
           : 0;
 
-      /*
-       * GPS is strong evidence of movement, but we don't trust
-       * one extremely large/noisy GPS value.
-       */
-
       if (hasGps && safeSpeed >= CYCLING_MIN_SPEED_KMH) {
         return "cycling";
       }
@@ -240,14 +242,6 @@ export function usePhoneSensors() {
         return "walking";
       }
 
-      /*
-       * Accelerometer fallback.
-       *
-       * This is intentionally less aggressive than the old
-       * classifier. Motion does not need to cross a very high
-       * threshold before the activity changes.
-       */
-
       if (avgMotion >= 1.8 || peakMotion >= 2.8) {
         return "running";
       }
@@ -256,12 +250,6 @@ export function usePhoneSensors() {
         return "walking";
       }
 
-      /*
-       * Slow walking can sometimes have GPS speed below 1.5 km/h.
-       * If there is measurable motion, don't immediately call it
-       * stationary.
-       */
-
       if (
         hasGps &&
         safeSpeed >= 0.7 &&
@@ -269,11 +257,6 @@ export function usePhoneSensors() {
       ) {
         return "walking";
       }
-
-      /*
-       * Only use stationary when BOTH GPS and motion indicate
-       * very little activity.
-       */
 
       if (
         safeSpeed < 0.7 &&
@@ -382,10 +365,6 @@ export function usePhoneSensors() {
         x ** 2 + y ** 2 + z ** 2,
       );
 
-      /*
-       * When accelerationIncludingGravity is used, remove
-       * approximate gravity from the magnitude.
-       */
       const dynamicMagnitude = acceleration
         ? magnitude
         : Math.abs(magnitude - 9.81);
@@ -412,21 +391,32 @@ export function usePhoneSensors() {
       const now = Date.now();
 
       /*
-       * Step detection uses a threshold crossing rather than
-       * counting every high-frequency sensor sample.
+       * Robust step detection:
+       * Detect a local acceleration peak instead of requiring the
+       * signal to cross below the threshold between every step.
+       *
+       * This works better across different phones because some
+       * devices keep acceleration above the old threshold for
+       * several sensor samples.
        */
-      const crossedThreshold =
-        safeMotion >= STEP_THRESHOLD &&
-        lastMotionValue.current < STEP_THRESHOLD;
+      const isPeak =
+        previousMotionValue.current > previousPreviousMotionValue.current &&
+        previousMotionValue.current >= safeMotion &&
+        previousMotionValue.current >= STEP_THRESHOLD;
 
       if (
-        crossedThreshold &&
+        isPeak &&
         now - lastStepAt.current >= STEP_COOLDOWN_MS
       ) {
         stepCount.current += 1;
         lastStepAt.current = now;
+        lastStepPeak.current = previousMotionValue.current;
       }
 
+      previousPreviousMotionValue.current =
+        previousMotionValue.current;
+
+      previousMotionValue.current = safeMotion;
       lastMotionValue.current = safeMotion;
 
       const currentSpeed = smoothedSpeed.current;
@@ -482,9 +472,6 @@ export function usePhoneSensors() {
       const previousAt =
         lastLocationAt.current;
 
-      /*
-       * Don't add poor-quality GPS fixes to distance.
-       */
       if (accuracy > GPS_MAX_ACCURACY_METERS) {
         setSnapshot((current) => ({
           ...current,
@@ -514,9 +501,6 @@ export function usePhoneSensors() {
           (delta / seconds) * 3.6;
       }
 
-      /*
-       * Prefer browser-provided GPS speed when valid.
-       */
       const browserSpeed =
         Number.isFinite(position.coords.speed) &&
         (position.coords.speed ?? -1) >= 0
@@ -528,9 +512,6 @@ export function usePhoneSensors() {
           ? browserSpeed
           : calculatedSpeed;
 
-      /*
-       * Reject obvious GPS jumps.
-       */
       if (
         rawSpeed > GPS_MAX_REASONABLE_SPEED_KMH
       ) {
@@ -545,10 +526,6 @@ export function usePhoneSensors() {
           : 0,
       );
 
-      /*
-       * Smooth GPS speed so a single noisy fix doesn't
-       * instantly change walking -> running.
-       */
       const speedSamples = [
         ...gpsSpeedSamples.current.slice(-4),
         validSpeed,
@@ -565,9 +542,6 @@ export function usePhoneSensors() {
       smoothedSpeed.current = averageSpeed;
       lastSpeed.current = averageSpeed;
 
-      /*
-       * Only add reasonable GPS movement to distance.
-       */
       if (
         previous &&
         delta > 0 &&
@@ -596,7 +570,7 @@ export function usePhoneSensors() {
 
       updateActivity(
         averageSpeed,
-        true,
+        lastCoordinates.current !== null,
         motionSamples.current.at(-1) ?? 0,
         currentMotionAverage,
         currentMotionPeak,
@@ -610,12 +584,16 @@ export function usePhoneSensors() {
         (now - sessionStart) / 60000,
       );
 
+      const hasUsableGps =
+        accuracy <= GPS_MAX_ACCURACY_METERS &&
+        Number.isFinite(averageSpeed);
+
       const activity = stabilizeActivity(
         classifyActivity(
           currentMotionAverage,
           currentMotionPeak,
           averageSpeed,
-          true,
+          hasUsableGps,
         ),
       );
 
@@ -658,10 +636,6 @@ export function usePhoneSensors() {
 
   const onGpsError = useCallback(
     (error: GeolocationPositionError) => {
-      /*
-       * A temporary GPS failure should NOT turn an active
-       * session into "error". Motion tracking can continue.
-       */
       let message =
         "GPS temporarily unavailable. Using motion data.";
 
@@ -703,11 +677,6 @@ export function usePhoneSensors() {
     }));
 
     try {
-      /*
-       * Request motion permission where supported.
-       * GPS should still work if motion permission isn't
-       * available.
-       */
       try {
         const motion =
           window.DeviceMotionEvent as typeof DeviceMotionEvent & {
@@ -759,6 +728,9 @@ export function usePhoneSensors() {
 
       lastStepAt.current = 0;
       lastMotionValue.current = 0;
+      previousMotionValue.current = 0;
+      previousPreviousMotionValue.current = 0;
+      lastStepPeak.current = 0;
 
       lastCoordinates.current = null;
       lastLocationAt.current = null;
@@ -851,9 +823,6 @@ export function usePhoneSensors() {
   ]);
 
   const stop = useCallback(() => {
-    /*
-     * Remove motion listener BEFORE clearing the session.
-     */
     window.removeEventListener(
       "devicemotion",
       onMotion,
@@ -877,6 +846,9 @@ export function usePhoneSensors() {
 
     lastStepAt.current = 0;
     lastMotionValue.current = 0;
+    previousMotionValue.current = 0;
+    previousPreviousMotionValue.current = 0;
+    lastStepPeak.current = 0;
 
     lastCoordinates.current = null;
     lastLocationAt.current = null;

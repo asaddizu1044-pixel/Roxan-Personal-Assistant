@@ -131,16 +131,24 @@ const appRouter = t.router({
         const now = new Date();
 
         const allUsers = await db.collection('users').find().toArray();
-        const userId = allUsers.length > 0 ? allUsers[0]._id : 1;
+        const userId = currentUser?._id ?? (allUsers.length > 0 ? allUsers[0]._id : null);
+
+        if (!userId) {
+          throw new Error("No user available for activity sync");
+        }
 
         let accepted = 0;
         for (const record of input.records || []) {
           const result = await db.collection('activity_records').updateOne(
-            { externalId: record.externalId },
+            {
+              externalId: record.externalId,
+              userId: userId,
+            },
             {
               $set: {
                 ...record,
                 source: input.source,
+                deviceId: input.deviceId,
                 userId: userId,
                 updatedAt: now,
               },
@@ -154,7 +162,11 @@ const appRouter = t.router({
         }
 
         await db.collection('sync_cursors').updateOne(
-          { source: input.source, deviceId: input.deviceId },
+          {
+            source: input.source,
+            deviceId: input.deviceId,
+            userId: userId,
+          },
           {
             $set: {
               source: input.source,
@@ -185,6 +197,7 @@ const appRouter = t.router({
         const cursor = await db.collection('sync_cursors').findOne({
           source: input.source,
           deviceId: input.deviceId,
+          userId: currentUser?._id || null,
         });
         return {
           lastSyncedAt: cursor?.lastSyncedAt || null,
@@ -224,6 +237,124 @@ app.get('/api/health', async (req, res) => {
       status: 'error',
       error: 'Database connection failed',
       message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ✅ REST activity sync endpoint
+app.post('/api/activity/sync', async (req, res) => {
+  try {
+    const input = req.body;
+
+    console.log(
+      "📤 REST activity sync request:",
+      input?.records?.length || 0,
+      "records"
+    );
+
+    const db = await getDb();
+    const now = new Date();
+
+    if (
+      !input ||
+      !["phone", "watch", "wearable"].includes(input.source) ||
+      typeof input.deviceId !== "string" ||
+      !Array.isArray(input.records)
+    ) {
+      return res.status(400).json({
+        error: "Invalid activity sync payload",
+      });
+    }
+
+    // Use the currently logged-in user when available.
+    // Fall back to the first user only for this simple local setup.
+    const allUsers = await db.collection("users").find().toArray();
+    const userId = currentUser?._id ?? (allUsers.length > 0 ? allUsers[0]._id : null);
+
+    if (!userId) {
+      return res.status(401).json({
+        error: "No user available for activity sync",
+      });
+    }
+
+    let accepted = 0;
+
+    for (const record of input.records) {
+      if (
+        typeof record.externalId !== "string" ||
+        typeof record.recordedAt !== "number" ||
+        !Number.isFinite(record.recordedAt)
+      ) {
+        console.warn("⚠️ Skipping invalid activity record:", record);
+        continue;
+      }
+
+      const result = await db.collection("activity_records").updateOne(
+        {
+          externalId: record.externalId,
+          userId: userId,
+        },
+        {
+          $set: {
+            ...record,
+            source: input.source,
+            deviceId: input.deviceId,
+            userId: userId,
+            updatedAt: now,
+          },
+          $setOnInsert: {
+            createdAt: now,
+          },
+        },
+        {
+          upsert: true,
+        }
+      );
+
+      if (result.upsertedCount > 0 || result.modifiedCount > 0) {
+        accepted++;
+      }
+    }
+
+    const lastSyncedAt = Date.now();
+
+    await db.collection("sync_cursors").updateOne(
+      {
+        source: input.source,
+        deviceId: input.deviceId,
+        userId: userId,
+      },
+      {
+        $set: {
+          source: input.source,
+          deviceId: input.deviceId,
+          cursor: input.cursor ?? null,
+          lastSyncedAt,
+          updatedAt: now,
+          userId: userId,
+        },
+      },
+      {
+        upsert: true,
+      }
+    );
+
+    console.log(
+      `✅ REST sync completed: ${accepted}/${input.records.length} records`
+    );
+
+    return res.status(200).json({
+      accepted,
+      duplicates: Math.max(0, input.records.length - accepted),
+      lastSyncedAt,
+    });
+  } catch (error) {
+    console.error("❌ REST activity sync error:", error);
+
+    return res.status(500).json({
+      error: "Activity sync failed",
+      message:
+        error instanceof Error ? error.message : "Unknown server error",
     });
   }
 });
