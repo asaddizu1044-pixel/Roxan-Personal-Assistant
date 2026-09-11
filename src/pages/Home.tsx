@@ -46,14 +46,31 @@ import {
 import WeightPromptModal from "@/components/WeightPromptModal";
 import LoginModal from "@/components/LoginModal";
 
-const routeTextureUrl = "/manus-storage/real-personal-tracker-route-texture_1027fb1e.png";
-const recoveryArtUrl = "/manus-storage/real-personal-tracker-recovery-art_b09e2d2c.png";
-const motionArtUrl = "/manus-storage/real-personal-tracker-motion-art_e5372933.png";
+const routeTextureUrl =
+  "/manus-storage/real-personal-tracker-route-texture_1027fb1e.png";
+const recoveryArtUrl =
+  "/manus-storage/real-personal-tracker-recovery-art_b09e2d2c.png";
+const motionArtUrl =
+  "/manus-storage/real-personal-tracker-motion-art_e5372933.png";
 
-type GoalMetric = "steps" | "distance" | "exercise" | "calories" | "sleep";
+type GoalMetric =
+  | "steps"
+  | "distance"
+  | "exercise"
+  | "calories"
+  | "sleep";
 type DailyGoal = { id: string; metric: GoalMetric; target: number };
-type PersonalTask = { id: string; title: string; note: string; done: boolean };
-type Coordinates = { latitude: number; longitude: number; accuracy: number };
+type PersonalTask = {
+  id: string;
+  title: string;
+  note: string;
+  done: boolean;
+};
+type Coordinates = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
 
 // ✅ Timestamp helper
 const normalizeTimestampMs = (timestamp: number): number => {
@@ -64,7 +81,10 @@ const normalizeTimestampMs = (timestamp: number): number => {
   return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
 };
 
-const goalLabels: Record<GoalMetric, { label: string; unit: string }> = {
+const goalLabels: Record<
+  GoalMetric,
+  { label: string; unit: string }
+> = {
   steps: { label: "Steps", unit: "steps" },
   distance: { label: "Distance", unit: "km" },
   exercise: { label: "Exercise", unit: "minutes" },
@@ -109,7 +129,9 @@ function ProgressRing({
     <div className="ring" style={{ width: size, height: size }}>
       <svg
         viewBox={`0 0 ${size} ${size}`}
-        aria-label={hasGoal ? `${value}% complete` : "No step goal configured"}
+        aria-label={
+          hasGoal ? `${value}% complete` : "No step goal configured"
+        }
         role="img"
       >
         <circle
@@ -217,7 +239,9 @@ export default function Home() {
   const [goals, setGoals] = useState<DailyGoal[]>(() => {
     try {
       return JSON.parse(
-        localStorage.getItem("roxan-personal-assistant:daily-goals") || "[]",
+        localStorage.getItem(
+          "roxan-personal-assistant:daily-goals",
+        ) || "[]",
       ) as DailyGoal[];
     } catch {
       return [];
@@ -226,7 +250,9 @@ export default function Home() {
   const [tasks, setTasks] = useState<PersonalTask[]>(() => {
     try {
       return JSON.parse(
-        localStorage.getItem("roxan-personal-assistant:daily-tasks") || "[]",
+        localStorage.getItem(
+          "roxan-personal-assistant:daily-tasks",
+        ) || "[]",
       ) as PersonalTask[];
     } catch {
       return [];
@@ -266,7 +292,8 @@ export default function Home() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
   }, [sleepEditing]);
 
   useEffect(() => {
@@ -280,7 +307,8 @@ export default function Home() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
   }, [goalDialogOpen]);
 
   useEffect(() => {
@@ -294,7 +322,8 @@ export default function Home() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
   }, [taskDialogOpen]);
 
   useEffect(() => {
@@ -308,7 +337,8 @@ export default function Home() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
   }, [showMobileNav]);
 
   const handleLogin = (name: string) => {
@@ -354,11 +384,18 @@ export default function Home() {
       todayRecords.reduce(
         (total: any, record: any) => ({
           steps: total.steps + record.steps,
-          distanceMeters: total.distanceMeters + record.distanceMeters,
-          activeSeconds: total.activeSeconds + record.activeSeconds,
+          distanceMeters:
+            total.distanceMeters + record.distanceMeters,
+          activeSeconds:
+            total.activeSeconds + record.activeSeconds,
           calories: total.calories + record.calories,
         }),
-        { steps: 0, distanceMeters: 0, activeSeconds: 0, calories: 0 },
+        {
+          steps: 0,
+          distanceMeters: 0,
+          activeSeconds: 0,
+          calories: 0,
+        },
       ),
     [todayRecords],
   );
@@ -370,7 +407,9 @@ export default function Home() {
           steps: phoneSensors.steps,
           distanceMeters: phoneSensors.distanceMeters,
           activeSeconds: phoneSensors.startedAt
-            ? Math.round((now.getTime() - phoneSensors.startedAt) / 1000)
+            ? Math.round(
+                (now.getTime() - phoneSensors.startedAt) / 1000,
+              )
             : 0,
           calories: phoneSensors.calories,
         }
@@ -378,8 +417,10 @@ export default function Home() {
 
   const daily = {
     steps: todaySummary.steps + liveSession.steps,
-    distanceMeters: todaySummary.distanceMeters + liveSession.distanceMeters,
-    activeSeconds: todaySummary.activeSeconds + liveSession.activeSeconds,
+    distanceMeters:
+      todaySummary.distanceMeters + liveSession.distanceMeters,
+    activeSeconds:
+      todaySummary.activeSeconds + liveSession.activeSeconds,
     calories: todaySummary.calories + liveSession.calories,
   };
 
@@ -426,7 +467,9 @@ export default function Home() {
       .join(" ");
   }, [phoneSensors.route]);
 
-  const completedCount = tasks.filter((task: PersonalTask) => task.done).length;
+  const completedCount = tasks.filter(
+    (task: PersonalTask) => task.done,
+  ).length;
   const activityMinutes = Math.round(daily.activeSeconds / 60);
 
   const goalCurrentValue = (metric: GoalMetric) =>
@@ -461,14 +504,20 @@ export default function Home() {
     if (!title) return;
     setTasks((current) => [
       ...current,
-      { id: crypto.randomUUID(), title, note: taskNote.trim(), done: false },
+      {
+        id: crypto.randomUUID(),
+        title,
+        note: taskNote.trim(),
+        done: false,
+      },
     ]);
     setTaskTitle("");
     setTaskNote("");
     setTaskDialogOpen(false);
   };
 
-  const firstName = user?.name?.trim().split(/\s+/)[0] ?? "there";
+  const firstName =
+    user?.name?.trim().split(/\s+/)[0] ?? "there";
   const initials =
     user?.name
       ?.trim()
@@ -526,29 +575,44 @@ export default function Home() {
   // ✅ Fixed: normalize recordedAt inside the chart filter too
   const chartBars = useMemo(
     () =>
-      Array.from({ length: timeRange === "Week" ? 7 : 30 }, (_, index) => {
-        const date = new Date(
-          dayStart -
-            ((timeRange === "Week" ? 6 : 29) - index) * 24 * 60 * 60 * 1000,
-        );
-        const start = date.getTime();
-        const end = start + 24 * 60 * 60 * 1000;
-        const value = records
-          .filter((record: any) => {
-            const recordedAtMs = normalizeTimestampMs(record.recordedAt);
-            return recordedAtMs >= start && recordedAtMs < end;
-          })
-          .reduce((sum: number, record: any) => sum + record.steps, 0);
-        return {
-          day: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(
-            date,
-          ),
-          value,
-        };
-      }),
+      Array.from(
+        { length: timeRange === "Week" ? 7 : 30 },
+        (_, index) => {
+          const date = new Date(
+            dayStart -
+              ((timeRange === "Week" ? 6 : 29) - index) *
+                24 *
+                60 *
+                60 *
+                1000,
+          );
+          const start = date.getTime();
+          const end = start + 24 * 60 * 60 * 1000;
+          const value = records
+            .filter((record: any) => {
+              const recordedAtMs = normalizeTimestampMs(
+                record.recordedAt,
+              );
+              return recordedAtMs >= start && recordedAtMs < end;
+            })
+            .reduce(
+              (sum: number, record: any) => sum + record.steps,
+              0,
+            );
+          return {
+            day: new Intl.DateTimeFormat(undefined, {
+              weekday: "short",
+            }).format(date),
+            value,
+          };
+        },
+      ),
     [records, dayStart, timeRange],
   );
-  const chartMax = Math.max(...chartBars.map((bar: any) => bar.value), 1);
+  const chartMax = Math.max(
+    ...chartBars.map((bar: any) => bar.value),
+    1,
+  );
 
   const goTo = (label: string) => {
     setActiveNav(label);
@@ -560,7 +624,7 @@ export default function Home() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ Fixed: syncSessionWithWeight now returns boolean success/failure
+  // ✅ Fixed: syncSessionWithWeight now returns boolean success/failure and verifies history
   const syncSessionWithWeight = async (
     session: any,
     actualCalories: number,
@@ -574,28 +638,70 @@ export default function Home() {
     setRestSyncError(null);
 
     try {
+      const payload = buildPhoneSyncPayload(updatedSession);
+
       const response = await fetch("/api/activity/sync", {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildPhoneSyncPayload(updatedSession)),
+        body: JSON.stringify(payload),
       });
 
+      const responseBody = await response.json().catch(() => null);
+
       if (!response.ok) {
-        throw new Error(`Activity sync failed (${response.status})`);
+        throw new Error(
+          responseBody?.error ||
+            responseBody?.message ||
+            `Activity sync failed (${response.status})`,
+        );
       }
 
-      await historyQuery.refetch();
-      await syncStatusQuery.refetch();
+      console.log("REST activity sync response:", responseBody);
 
-      console.log("Session synced with weight:", actualCalories);
+      // Refetch both queries only after the POST has completed successfully.
+      const [historyResult, statusResult] = await Promise.all([
+        historyQuery.refetch(),
+        syncStatusQuery.refetch(),
+      ]);
+
+      if (historyResult.error) {
+        throw historyResult.error;
+      }
+
+      if (statusResult.error) {
+        throw statusResult.error;
+      }
+
+      // Confirm that the saved activity is visible to the history query.
+      const syncedRecords = historyResult.data ?? [];
+      const syncedExternalId = updatedSession.externalId;
+
+      const recordWasSaved = syncedRecords.some(
+        (record: any) => record.externalId === syncedExternalId,
+      );
+
+      if (!recordWasSaved) {
+        throw new Error(
+          "Sync completed, but the saved activity was not returned by history.",
+        );
+      }
+
+      console.log(
+        "Session synced and confirmed:",
+        updatedSession.externalId,
+      );
+
       return true;
     } catch (error) {
       console.error("Activity sync error:", error);
+
       setRestSyncError(
-        error instanceof Error ? error.message : "Activity sync unavailable",
+        error instanceof Error
+          ? error.message
+          : "Activity sync unavailable",
       );
       return false;
     } finally {
@@ -622,7 +728,9 @@ export default function Home() {
       if (!hasMeaningfulActivity) {
         phoneSensors.stop();
         setIsTracking(false);
-        console.log("Session ignored: no meaningful activity detected.");
+        console.log(
+          "Session ignored: no meaningful activity detected.",
+        );
         return;
       }
 
@@ -633,7 +741,10 @@ export default function Home() {
         steps: Math.max(0, phoneSensors.steps),
         distanceMeters: Math.round(phoneSensors.distanceMeters),
         activeSeconds: sessionStartedAt
-          ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000))
+          ? Math.max(
+              0,
+              Math.round((Date.now() - sessionStartedAt) / 1000),
+            )
           : 0,
         calories: Math.max(0, phoneSensors.calories),
         avgHeartRate: null as null,
@@ -713,7 +824,9 @@ export default function Home() {
             </span>
           </button>
           <button
-            className={activeNav === "Connected devices" ? "active" : ""}
+            className={
+              activeNav === "Connected devices" ? "active" : ""
+            }
             onClick={() => goTo("Connected devices")}
           >
             <Watch size={18} />
@@ -738,14 +851,21 @@ export default function Home() {
           <button
             className="profile"
             onClick={() => {
-              console.log("Profile clicked - isAuthenticated:", isAuthenticated);
+              console.log(
+                "Profile clicked - isAuthenticated:",
+                isAuthenticated,
+              );
               if (isAuthenticated) {
-                console.log("User is authenticated, showing logout confirm");
+                console.log(
+                  "User is authenticated, showing logout confirm",
+                );
                 if (confirm("Are you sure you want to logout?")) {
                   logout();
                 }
               } else {
-                console.log("User not authenticated, opening login modal");
+                console.log(
+                  "User not authenticated, opening login modal",
+                );
                 setShowLoginModal(true);
               }
             }}
@@ -753,7 +873,11 @@ export default function Home() {
             <span className="avatar">{initials}</span>
             <span>
               <strong>{user?.name ?? "Your account"}</strong>
-              <small>{isAuthenticated ? "Personal account" : "Tap to sign in"}</small>
+              <small>
+                {isAuthenticated
+                  ? "Personal account"
+                  : "Tap to sign in"}
+              </small>
             </span>
             <MoreHorizontal size={17} />
           </button>
@@ -772,12 +896,17 @@ export default function Home() {
             <Menu size={21} />
           </button>
           <div className="topbar-context">
-            <span className={`status-dot ${!phoneSensors.isOnline ? "offline" : ""}`} />
+            <span
+              className={`status-dot ${!phoneSensors.isOnline ? "offline" : ""}`}
+            />
             {phoneSensors.isOnline ? "Workspace ready" : "Offline mode"}
             <span className="slash">/</span> {historyLabel}
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" aria-label="Notifications">
+            <button
+              className="icon-button"
+              aria-label="Notifications"
+            >
               <Bell size={19} />
             </button>
             <button className="icon-button" aria-label="Help">
@@ -795,28 +924,37 @@ export default function Home() {
           <section className="section-vertical">
             <div className="welcome-section">
               <div>
-                <p className="eyebrow accent-eyebrow">{dateLabel} <span className="sun-mark">✦</span></p>
-                <h1>{greeting}, {firstName}<span className="serif-dot">.</span></h1>
+                <p className="eyebrow accent-eyebrow">
+                  {dateLabel} <span className="sun-mark">✦</span>
+                </p>
+                <h1>
+                  {greeting}, {firstName}
+                  <span className="serif-dot">.</span>
+                </h1>
                 <p className="intro-copy">
                   {isAuthenticated
                     ? `Your assistant is ready at ${timeLabel}.`
                     : "Sign in to keep your personal history synced across sessions."}
                 </p>
               </div>
-              <div className={`sync-status ${isTracking ? "tracking" : ""}`}>
+              <div
+                className={`sync-status ${isTracking ? "tracking" : ""}`}
+              >
                 <span className="sync-pulse" />
                 <div>
                   <strong>
                     {isTracking
                       ? `Live tracking · ${phoneSensors.activity}`
-                      : phoneSensors.state === "denied" || phoneSensors.state === "unsupported"
+                      : phoneSensors.state === "denied" ||
+                          phoneSensors.state === "unsupported"
                         ? "Permission needed"
                         : "Ready to track"}
                   </strong>
                   <span>
                     {isTracking
                       ? `${phoneSensors.steps} steps · ${phoneSensors.speedKmh.toFixed(1)} km/h`
-                      : phoneSensors.permissionError ?? "Start a foreground phone sensor session"}
+                      : phoneSensors.permissionError ??
+                        "Start a foreground phone sensor session"}
                   </span>
                 </div>
                 <button onClick={() => void toggleTracking()}>
@@ -835,13 +973,19 @@ export default function Home() {
                   <p className="eyebrow">Daily pulse</p>
                   <h2>Movement, in context</h2>
                 </div>
-                <button className="more-button" aria-label="Daily pulse information">
+                <button
+                  className="more-button"
+                  aria-label="Daily pulse information"
+                >
                   <MoreHorizontal size={19} />
                 </button>
               </div>
               <div className="pulse-body">
                 <div className="pulse-ring-wrap">
-                  <ProgressRing value={stepProgress} hasGoal={Boolean(stepGoal)} />
+                  <ProgressRing
+                    value={stepProgress}
+                    hasGoal={Boolean(stepGoal)}
+                  />
                   <span className="ring-caption">
                     {stepGoal
                       ? `${Math.max(0, stepGoal - daily.steps).toLocaleString()} steps to go`
@@ -850,10 +994,14 @@ export default function Home() {
                 </div>
                 <div className="pulse-stats">
                   <div>
-                    <span className="stat-label"><Footprints size={14} /> Steps</span>
+                    <span className="stat-label">
+                      <Footprints size={14} /> Steps
+                    </span>
                     <strong>
                       {daily.steps.toLocaleString()}
-                      {stepGoal && <small>/ {stepGoal.toLocaleString()}</small>}
+                      {stepGoal && (
+                        <small>/ {stepGoal.toLocaleString()}</small>
+                      )}
                     </strong>
                     {stepGoal && (
                       <div className="mini-progress">
@@ -862,27 +1010,43 @@ export default function Home() {
                     )}
                   </div>
                   <div>
-                    <span className="stat-label"><Route size={14} /> Distance</span>
+                    <span className="stat-label">
+                      <Route size={14} /> Distance
+                    </span>
                     <strong>
-                      {daily.distanceMeters ? (daily.distanceMeters / 1000).toFixed(2) : "—"}
+                      {daily.distanceMeters
+                        ? (daily.distanceMeters / 1000).toFixed(2)
+                        : "—"}
                       <small>{daily.distanceMeters ? "km" : ""}</small>
                     </strong>
-                    <p>{daily.distanceMeters ? "From phone GPS or step fallback" : "No distance recorded"}</p>
+                    <p>
+                      {daily.distanceMeters
+                        ? "From phone GPS or step fallback"
+                        : "No distance recorded"}
+                    </p>
                   </div>
                   <div>
-                    <span className="stat-label"><Timer size={14} /> Active time</span>
+                    <span className="stat-label">
+                      <Timer size={14} /> Active time
+                    </span>
                     <strong>
                       {activityMinutes ? activityMinutes : "—"}
                       <small>{activityMinutes ? "min" : ""}</small>
                     </strong>
-                    <p>{activityMinutes ? "From recorded sessions" : "No session recorded"}</p>
+                    <p>
+                      {activityMinutes
+                        ? "From recorded sessions"
+                        : "No session recorded"}
+                    </p>
                   </div>
                 </div>
               </div>
               <div className="pulse-foot">
                 <span>
                   <span className="tiny-dot citron" />
-                  {daily.steps ? "Live data available" : "Waiting for your first activity"}
+                  {daily.steps
+                    ? "Live data available"
+                    : "Waiting for your first activity"}
                 </span>
                 <button onClick={() => goTo("Activity")}>
                   Open activity <ArrowUpRight size={14} />
@@ -894,20 +1058,30 @@ export default function Home() {
           {/* Current Activity */}
           <section className="section-vertical">
             <article className="now-card panel">
-              <div className="now-image" style={{ backgroundImage: `url(${motionArtUrl})` }}>
+              <div
+                className="now-image"
+                style={{ backgroundImage: `url(${motionArtUrl})` }}
+              >
                 <div className="image-overlay" />
                 <div className="now-top">
                   <span className="live-pill dark">
                     <span className="tiny-dot citron" />
                     {isTracking ? "Live" : "Idle"}
                   </span>
-                  <button className="glass-button" aria-label="Current activity information">
+                  <button
+                    className="glass-button"
+                    aria-label="Current activity information"
+                  >
                     <MoreHorizontal size={18} />
                   </button>
                 </div>
                 <div className="now-copy">
                   <p className="eyebrow light">Current activity</p>
-                  <h2>{isTracking ? phoneSensors.activity : "No active session"}</h2>
+                  <h2>
+                    {isTracking
+                      ? phoneSensors.activity
+                      : "No active session"}
+                  </h2>
                   <span>
                     {isTracking
                       ? `${phoneSensors.steps} steps · ${(phoneSensors.distanceMeters / 1000).toFixed(2)} km`
@@ -917,19 +1091,31 @@ export default function Home() {
               </div>
               <div className="now-footer">
                 <div>
-                  <span className="footer-label"><HeartPulse size={14} /> Heart rate</span>
-                  <strong>— <small>BPM</small></strong>
+                  <span className="footer-label">
+                    <HeartPulse size={14} /> Heart rate
+                  </span>
+                  <strong>
+                    — <small>BPM</small>
+                  </strong>
                 </div>
                 <div>
-                  <span className="footer-label"><BatteryMedium size={14} /> Device battery</span>
+                  <span className="footer-label">
+                    <BatteryMedium size={14} /> Device battery
+                  </span>
                   <strong>—</strong>
                 </div>
                 <button
                   className="play-button"
                   onClick={() => void toggleTracking()}
-                  aria-label={isTracking ? "Pause session" : "Start session"}
+                  aria-label={
+                    isTracking ? "Pause session" : "Start session"
+                  }
                 >
-                  {isTracking ? <span className="pause-bars" /> : <Play size={15} fill="currentColor" />}
+                  {isTracking ? (
+                    <span className="pause-bars" />
+                  ) : (
+                    <Play size={15} fill="currentColor" />
+                  )}
                 </button>
               </div>
             </article>
@@ -943,12 +1129,18 @@ export default function Home() {
                   <p className="eyebrow">Today at a glance</p>
                   <h2>The signals that matter</h2>
                 </div>
-                <button className="text-button" onClick={() => goTo("Health")}>
+                <button
+                  className="text-button"
+                  onClick={() => goTo("Health")}
+                >
                   Open health <ArrowUpRight size={15} />
                 </button>
               </div>
               {historyQuery.isLoading ? (
-                <div className="data-loading-state" aria-live="polite">
+                <div
+                  className="data-loading-state"
+                  aria-live="polite"
+                >
                   <span className="history-loader" />
                   <strong>Loading today's signals</strong>
                   <span>Reading your personal activity history.</span>
@@ -962,7 +1154,11 @@ export default function Home() {
                     unit=""
                     change={daily.steps ? "Live" : "No data"}
                     tone="citron"
-                    detail={daily.steps ? "From phone or synced records" : "Start a session to measure steps"}
+                    detail={
+                      daily.steps
+                        ? "From phone or synced records"
+                        : "Start a session to measure steps"
+                    }
                   />
                   <MetricCard
                     icon={HeartPulse}
@@ -976,11 +1172,19 @@ export default function Home() {
                   <MetricCard
                     icon={Moon}
                     label="Sleep"
-                    value={sleepHours !== null ? `${sleepHours.toFixed(2)}h` : "—"}
+                    value={
+                      sleepHours !== null
+                        ? `${sleepHours.toFixed(2)}h`
+                        : "—"
+                    }
                     unit=""
                     change={sleepHours !== null ? "Manual" : "No entry"}
                     tone="blue"
-                    detail={sleepHours !== null ? "Basic recovery prediction available" : "Add a manual sleep entry"}
+                    detail={
+                      sleepHours !== null
+                        ? "Basic recovery prediction available"
+                        : "Add a manual sleep entry"
+                    }
                   />
                   <MetricCard
                     icon={Zap}
@@ -989,7 +1193,11 @@ export default function Home() {
                     unit=" kcal"
                     change={daily.calories ? "Estimated" : "No data"}
                     tone="peach"
-                    detail={daily.calories ? "Formula-based session estimate" : "Calories appear after activity"}
+                    detail={
+                      daily.calories
+                        ? "Formula-based session estimate"
+                        : "Calories appear after activity"
+                    }
                   />
                 </div>
               )}
@@ -999,12 +1207,19 @@ export default function Home() {
           {/* Recovery Check-in */}
           <section className="section-vertical">
             <aside className="recovery-card panel">
-              <div className="recovery-art" style={{ backgroundImage: `url(${recoveryArtUrl})` }} />
+              <div
+                className="recovery-art"
+                style={{ backgroundImage: `url(${recoveryArtUrl})` }}
+              />
               <div className="recovery-copy">
                 <div className="recovery-title">
                   <div>
                     <p className="eyebrow">Recovery check-in</p>
-                    <h3>{sleepHours !== null ? "Sleep entry captured" : "No sleep record yet"}</h3>
+                    <h3>
+                      {sleepHours !== null
+                        ? "Sleep entry captured"
+                        : "No sleep record yet"}
+                    </h3>
                   </div>
                   <span className="score-badge">—</span>
                 </div>
@@ -1013,17 +1228,34 @@ export default function Home() {
                     ? `You entered ${sleepHours.toFixed(2)} hours. The basic prediction is ${sleepHours >= 7 ? "steady recovery" : "more rest may help tomorrow"}.`
                     : "Sleep recovery is not inferred without your input. Add a manual entry to begin a simple trend."}
                 </p>
-                <button className="outline-button" onClick={() => setSleepEditing(!sleepEditing)}>
-                  {sleepEditing ? "Save sleep entry" : "Add sleep entry"} <ArrowUpRight size={15} />
+                <button
+                  className="outline-button"
+                  onClick={() => setSleepEditing(!sleepEditing)}
+                >
+                  {sleepEditing
+                    ? "Save sleep entry"
+                    : "Add sleep entry"}{" "}
+                  <ArrowUpRight size={15} />
                 </button>
                 {sleepEditing && (
                   <div className="sleep-editor-overlay">
-                    <div className="sleep-editor" ref={sleepEditorRef}>
+                    <div
+                      className="sleep-editor"
+                      ref={sleepEditorRef}
+                    >
                       <div className="sleep-editor-header">
                         <label htmlFor="sleep-hours">
-                          Last night: <strong>{(sleepHours ?? 7).toFixed(2)} hours</strong>
+                          Last night:{" "}
+                          <strong>
+                            {(sleepHours ?? 7).toFixed(2)} hours
+                          </strong>
                         </label>
-                        <button className="sleep-editor-close" onClick={() => setSleepEditing(false)}>×</button>
+                        <button
+                          className="sleep-editor-close"
+                          onClick={() => setSleepEditing(false)}
+                        >
+                          ×
+                        </button>
                       </div>
                       <input
                         id="sleep-hours"
@@ -1032,13 +1264,27 @@ export default function Home() {
                         max="10"
                         step="0.25"
                         value={sleepHours ?? 7}
-                        onChange={(event) => setSleepHours(Number(event.target.value))}
+                        onChange={(event) =>
+                          setSleepHours(Number(event.target.value))
+                        }
                       />
                       <div className="sleep-editor-actions">
-                        <button className="sleep-editor-cancel" onClick={() => setSleepEditing(false)}>Cancel</button>
-                        <button className="sleep-editor-save" onClick={() => setSleepEditing(false)}>Save</button>
+                        <button
+                          className="sleep-editor-cancel"
+                          onClick={() => setSleepEditing(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="sleep-editor-save"
+                          onClick={() => setSleepEditing(false)}
+                        >
+                          Save
+                        </button>
                       </div>
-                      <small>Basic prediction only; not a clinical measurement.</small>
+                      <small>
+                        Basic prediction only; not a clinical measurement.
+                      </small>
                     </div>
                   </div>
                 )}
@@ -1070,31 +1316,53 @@ export default function Home() {
                 <div className="chart-empty" aria-live="polite">
                   <span className="history-loader" />
                   <strong>Loading activity trend</strong>
-                  <span>Reading recorded activity from your account.</span>
+                  <span>
+                    Reading recorded activity from your account.
+                  </span>
                 </div>
               ) : records.length === 0 ? (
                 <div className="chart-empty">
                   <TrendingUp size={19} />
                   <strong>No activity history yet</strong>
-                  <span>Complete a phone session or connect a source to build this chart.</span>
+                  <span>
+                    Complete a phone session or connect a source to build this
+                    chart.
+                  </span>
                 </div>
               ) : (
                 <>
                   <div className="chart-summary">
                     <strong>
-                      {records.reduce((sum: number, record: any) => sum + record.steps, 0).toLocaleString()}
+                      {records
+                        .reduce(
+                          (sum: number, record: any) => sum + record.steps,
+                          0,
+                        )
+                        .toLocaleString()}
                       <small>steps</small>
                     </strong>
                     <span className="positive">
-                      <History size={14} /> {records.length} recorded {records.length === 1 ? "event" : "events"}
+                      <History size={14} /> {records.length} recorded{" "}
+                      {records.length === 1 ? "event" : "events"}
                     </span>
                   </div>
-                  <div className={`bar-chart ${timeRange === "Month" ? "month-chart" : ""}`}>
+                  <div
+                    className={`bar-chart ${timeRange === "Month" ? "month-chart" : ""}`}
+                  >
                     {chartBars.map((bar: any, index: number) => (
-                      <div className="bar-column" key={`${bar.day}-${index}`}>
-                        <span className="bar-value">{bar.value ? bar.value.toLocaleString() : "—"}</span>
+                      <div
+                        className="bar-column"
+                        key={`${bar.day}-${index}`}
+                      >
+                        <span className="bar-value">
+                          {bar.value ? bar.value.toLocaleString() : "—"}
+                        </span>
                         <div className="bar-track">
-                          <i style={{ height: `${bar.value ? Math.max(8, (bar.value / chartMax) * 100) : 3}%` }} />
+                          <i
+                            style={{
+                              height: `${bar.value ? Math.max(8, (bar.value / chartMax) * 100) : 3}%`,
+                            }}
+                          />
                         </div>
                         <span className="bar-day">{bar.day}</span>
                       </div>
@@ -1105,7 +1373,10 @@ export default function Home() {
                       <span className="tiny-dot citron" />
                       Steps from stored records
                     </span>
-                    <button className="text-button" onClick={() => goTo("History")}>
+                    <button
+                      className="text-button"
+                      onClick={() => goTo("History")}
+                    >
                       View history <ArrowUpRight size={14} />
                     </button>
                   </div>
@@ -1123,9 +1394,21 @@ export default function Home() {
                   <h2>Your goals and tasks</h2>
                 </div>
                 <div className="goal-actions">
-                  <button className="subtle-action" onClick={() => setGoalDialogOpen(true)}>+ Add goal</button>
-                  <button className="subtle-action" onClick={() => setTaskDialogOpen(true)}>+ Add task</button>
-                  <span className="task-count">{completedCount}/{tasks.length}</span>
+                  <button
+                    className="subtle-action"
+                    onClick={() => setGoalDialogOpen(true)}
+                  >
+                    + Add goal
+                  </button>
+                  <button
+                    className="subtle-action"
+                    onClick={() => setTaskDialogOpen(true)}
+                  >
+                    + Add task
+                  </button>
+                  <span className="task-count">
+                    {completedCount}/{tasks.length}
+                  </span>
                 </div>
               </div>
               {historyQuery.isLoading ? (
@@ -1138,26 +1421,44 @@ export default function Home() {
                 <div className="empty-data">
                   <Target size={19} />
                   <strong>No goals or tasks configured</strong>
-                  <span>Use Add goal or Add task above to plan what you want to do today.</span>
+                  <span>
+                    Use Add goal or Add task above to plan what you want to do
+                    today.
+                  </span>
                 </div>
               ) : (
                 <div className="goal-content">
                   {goals.map((goal: DailyGoal) => {
                     const current = goalCurrentValue(goal.metric);
-                    const progress = Math.min(100, Math.round((current / goal.target) * 100));
+                    const progress = Math.min(
+                      100,
+                      Math.round((current / goal.target) * 100),
+                    );
                     return (
                       <div className="goal-row" key={goal.id}>
                         <div className="goal-row-top">
                           <span>
-                            <strong>{goalLabels[goal.metric].label}</strong>
+                            <strong>
+                              {goalLabels[goal.metric].label}
+                            </strong>
                             <small>
-                              {current.toFixed(goal.metric === "distance" || goal.metric === "sleep" ? 1 : 0)} / {goal.target}{" "}
+                              {current.toFixed(
+                                goal.metric === "distance" ||
+                                  goal.metric === "sleep"
+                                  ? 1
+                                  : 0,
+                              )}{" "}
+                              / {goal.target}{" "}
                               {goalLabels[goal.metric].unit}
                             </small>
                           </span>
                           <button
                             className="remove-goal"
-                            onClick={() => setGoals((items) => items.filter((item) => item.id !== goal.id))}
+                            onClick={() =>
+                              setGoals((items) =>
+                                items.filter((item) => item.id !== goal.id),
+                              )
+                            }
                             aria-label={`Remove ${goalLabels[goal.metric].label} goal`}
                           >
                             ×
@@ -1166,7 +1467,9 @@ export default function Home() {
                         <div className="goal-bar">
                           <i style={{ width: `${progress}%` }} />
                         </div>
-                        <small className="goal-progress-label">{progress}% complete · updates from your real activity</small>
+                        <small className="goal-progress-label">
+                          {progress}% complete · updates from your real activity
+                        </small>
                       </div>
                     );
                   })}
@@ -1177,12 +1480,16 @@ export default function Home() {
                       onClick={() =>
                         setTasks((items) =>
                           items.map((item) =>
-                            item.id === task.id ? { ...item, done: !item.done } : item,
+                            item.id === task.id
+                              ? { ...item, done: !item.done }
+                              : item,
                           ),
                         )
                       }
                     >
-                      <span className="task-check">{task.done ? <Check size={12} /> : null}</span>
+                      <span className="task-check">
+                        {task.done ? <Check size={12} /> : null}
+                      </span>
                       <span>
                         <strong>{task.title}</strong>
                         {task.note && <small>{task.note}</small>}
@@ -1204,7 +1511,9 @@ export default function Home() {
                   <h2>Your activity, kept in context</h2>
                 </div>
                 {isAuthenticated && (
-                  <span className={`history-source ${syncStatusQuery.error ? "attention" : ""}`}>
+                  <span
+                    className={`history-source ${syncStatusQuery.error ? "attention" : ""}`}
+                  >
                     <Activity size={14} />
                     {restSyncing
                       ? "Uploading session"
@@ -1224,8 +1533,12 @@ export default function Home() {
                 <div className="history-state">
                   <ShieldCheck size={18} />
                   <div>
-                    <strong>Sign in to sync your personal history</strong>
-                    <span>Your records stay private and load only for your account.</span>
+                    <strong>
+                      Sign in to sync your personal history
+                    </strong>
+                    <span>
+                      Your records stay private and load only for your account.
+                    </span>
                   </div>
                 </div>
               ) : historyQuery.isLoading ? (
@@ -1240,8 +1553,13 @@ export default function Home() {
                 <div className="history-state error">
                   <X size={18} />
                   <div>
-                    <strong>History is temporarily unavailable</strong>
-                    <span>We kept the dashboard available. Try again when your connection is ready.</span>
+                    <strong>
+                      History is temporarily unavailable
+                    </strong>
+                    <span>
+                      We kept the dashboard available. Try again when your
+                      connection is ready.
+                    </span>
                   </div>
                   <button onClick={() => historyQuery.refetch()}>
                     Retry <ArrowUpRight size={14} />
@@ -1252,18 +1570,29 @@ export default function Home() {
                   <History size={18} />
                   <div>
                     <strong>No synced activity yet</strong>
-                    <span>Start a phone session or connect a source to build your timeline.</span>
+                    <span>
+                      Start a phone session or connect a source to build your
+                      timeline.
+                    </span>
                   </div>
                 </div>
               ) : (
                 <div className="history-list">
                   {recentHistory.map((record: any) => (
                     <div className="history-item" key={record.id}>
-                      <span className="history-type">{record.activityType}</span>
-                      <span>{record.steps.toLocaleString()} steps</span>
-                      <span>{(record.distanceMeters / 1000).toFixed(2)} km</span>
+                      <span className="history-type">
+                        {record.activityType}
+                      </span>
+                      <span>
+                        {record.steps.toLocaleString()} steps
+                      </span>
+                      <span>
+                        {(record.distanceMeters / 1000).toFixed(2)} km
+                      </span>
                       <time>
-                        {new Date(normalizeTimestampMs(record.recordedAt)).toLocaleDateString(undefined, {
+                        {new Date(
+                          normalizeTimestampMs(record.recordedAt),
+                        ).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
                         })}
@@ -1283,7 +1612,10 @@ export default function Home() {
                   <ShieldCheck size={17} />
                   <div>
                     <strong>Sync becomes available after sign-in</strong>
-                    <span>Authentication keeps personal history isolated to your account.</span>
+                    <span>
+                      Authentication keeps personal history isolated to your
+                      account.
+                    </span>
                   </div>
                 </div>
               ) : !phoneSensors.isOnline ? (
@@ -1311,7 +1643,10 @@ export default function Home() {
                   <X size={17} />
                   <div>
                     <strong>Phone sync needs attention</strong>
-                    <span>The dashboard is still available. Retry when your connection is ready.</span>
+                    <span>
+                      The dashboard is still available. Retry when your
+                      connection is ready.
+                    </span>
                   </div>
                   <button onClick={() => syncStatusQuery.refetch()}>
                     Retry sync <ArrowUpRight size={14} />
@@ -1325,7 +1660,9 @@ export default function Home() {
                     <span>
                       Last checkpoint{" "}
                       {new Date(
-                        normalizeTimestampMs(syncStatusQuery.data.lastSyncedAt),
+                        normalizeTimestampMs(
+                          syncStatusQuery.data.lastSyncedAt,
+                        ),
                       ).toLocaleString()}
                       .
                     </span>
@@ -1337,7 +1674,9 @@ export default function Home() {
                   <Activity size={17} />
                   <div>
                     <strong>Phone connected, not synced yet</strong>
-                    <span>Complete a sensor session to create the first checkpoint.</span>
+                    <span>
+                      Complete a sensor session to create the first checkpoint.
+                    </span>
                   </div>
                 </div>
               )}
@@ -1349,7 +1688,11 @@ export default function Home() {
             <div className="sensor-summary panel" id="activity-section">
               <div>
                 <p className="eyebrow">Phone sensor session</p>
-                <strong>{phoneSensors.state === "active" ? "Collecting live signals" : "Sensors are idle"}</strong>
+                <strong>
+                  {phoneSensors.state === "active"
+                    ? "Collecting live signals"
+                    : "Sensors are idle"}
+                </strong>
                 <span>
                   {!phoneSensors.isOnline
                     ? "Offline mode · session will queue locally until connection returns."
@@ -1359,7 +1702,10 @@ export default function Home() {
                 </span>
               </div>
               {isTracking && routePath && (
-                <div className="route-preview" aria-label={`${phoneSensors.route.length} GPS route points captured`}>
+                <div
+                  className="route-preview"
+                  aria-label={`${phoneSensors.route.length} GPS route points captured`}
+                >
                   <svg viewBox="0 0 100 100" role="img">
                     <path d={routePath} />
                   </svg>
@@ -1368,15 +1714,11 @@ export default function Home() {
               )}
               <div className="sensor-values">
                 <span>
-                  <strong>
-                    {phoneSensors.steps.toLocaleString()}
-                  </strong>{" "}
+                  <strong>{phoneSensors.steps.toLocaleString()}</strong>{" "}
                   steps
                 </span>
                 <span>
-                  <strong>
-                    {phoneSensors.speedKmh.toFixed(1)}
-                  </strong>{" "}
+                  <strong>{phoneSensors.speedKmh.toFixed(1)}</strong>{" "}
                   km/h
                 </span>
                 <span>
@@ -1387,7 +1729,9 @@ export default function Home() {
                 </span>
               </div>
               {phoneSensors.permissionError && (
-                <span className="sensor-error">{phoneSensors.permissionError}</span>
+                <span className="sensor-error">
+                  {phoneSensors.permissionError}
+                </span>
               )}
             </div>
           </section>
@@ -1407,7 +1751,11 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="eyebrow light">Location system</p>
-                  <h2>{phoneSensors.coordinates ? "Location available" : "Location permission needed"}</h2>
+                  <h2>
+                    {phoneSensors.coordinates
+                      ? "Location available"
+                      : "Location permission needed"}
+                  </h2>
                   <p>
                     {phoneSensors.coordinates
                       ? `Current accuracy ±${Math.round(phoneSensors.coordinates.accuracy)}m. Location is used only during an active session.`
@@ -1417,7 +1765,10 @@ export default function Home() {
               </div>
               <div className="location-actions">
                 <span className="connection-state">
-                  <Wifi size={15} /> {phoneSensors.coordinates ? "GPS available" : "GPS idle"}
+                  <Wifi size={15} />{" "}
+                  {phoneSensors.coordinates
+                    ? "GPS available"
+                    : "GPS idle"}
                 </span>
                 <button
                   className="light-button"
@@ -1426,7 +1777,8 @@ export default function Home() {
                     goTo("Activity");
                   }}
                 >
-                  {isTracking ? "Pause activity" : "Start outdoor activity"} <ArrowUpRight size={15} />
+                  {isTracking ? "Pause activity" : "Start outdoor activity"}{" "}
+                  <ArrowUpRight size={15} />
                 </button>
               </div>
             </div>
@@ -1436,11 +1788,16 @@ export default function Home() {
           <section className="section-vertical">
             <div className="smart-row">
               <div className="smart-intro">
-                <p className="eyebrow">Quietly working in the background</p>
-                <h2>Roxan's smart features, visible when you need them.</h2>
+                <p className="eyebrow">
+                  Quietly working in the background
+                </p>
+                <h2>
+                  Roxan's smart features, visible when you need them.
+                </h2>
                 <p>
-                  The workspace now reflects only connected systems and real signals. Empty states are intentional
-                  until you grant access or record activity.
+                  The workspace now reflects only connected systems and real
+                  signals. Empty states are intentional until you grant access
+                  or record activity.
                 </p>
               </div>
               <div className="smart-features">
@@ -1473,7 +1830,11 @@ export default function Home() {
                   <Settings2 size={18} />
                   <span>
                     <strong>Motion detection</strong>
-                    <small>{phoneSensors.state === "active" ? "Active for this session" : "Idle until permission"}</small>
+                    <small>
+                      {phoneSensors.state === "active"
+                        ? "Active for this session"
+                        : "Idle until permission"}
+                    </small>
                   </span>
                 </div>
               </div>
@@ -1482,10 +1843,17 @@ export default function Home() {
 
           {/* Footer */}
           <footer className="page-footer">
-            <span>Roxan Personal Assistant · Personal signals, without invented numbers.</span>
+            <span>
+              Roxan Personal Assistant · Personal signals, without invented
+              numbers.
+            </span>
             <span>
               <button onClick={() => goTo("History")}>History</button>
-              <button onClick={() => goTo("Connected devices")}>Data controls</button>
+              <button
+                onClick={() => goTo("Connected devices")}
+              >
+                Data controls
+              </button>
             </span>
           </footer>
 
@@ -1522,7 +1890,9 @@ export default function Home() {
                     What do you want to measure?
                     <select
                       value={goalMetric}
-                      onChange={(event) => setGoalMetric(event.target.value as GoalMetric)}
+                      onChange={(event) =>
+                        setGoalMetric(event.target.value as GoalMetric)
+                      }
                     >
                       {Object.entries(goalLabels).map(([value, option]) => (
                         <option value={value} key={value}>
@@ -1538,10 +1908,13 @@ export default function Home() {
                       min="0.25"
                       step="0.25"
                       value={goalTarget}
-                      onChange={(event) => setGoalTarget(Number(event.target.value))}
+                      onChange={(event) =>
+                        setGoalTarget(Number(event.target.value))
+                      }
                     />
                     <small>
-                      Progress updates from sensor or synced data. Nothing is pre-filled as completed.
+                      Progress updates from sensor or synced data. Nothing is
+                      pre-filled as completed.
                     </small>
                   </label>
                   <button className="modal-submit" type="submit">
