@@ -1,5 +1,11 @@
 /* Roxan Personal Assistant: live workspace shell with sensor/database-backed values and honest empty states. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { usePhoneSensors } from "@/hooks/usePhoneSensors";
@@ -48,6 +54,15 @@ type GoalMetric = "steps" | "distance" | "exercise" | "calories" | "sleep";
 type DailyGoal = { id: string; metric: GoalMetric; target: number };
 type PersonalTask = { id: string; title: string; note: string; done: boolean };
 type Coordinates = { latitude: number; longitude: number; accuracy: number };
+
+// ✅ Timestamp helper
+const normalizeTimestampMs = (timestamp: number): number => {
+  if (!Number.isFinite(timestamp)) {
+    return 0;
+  }
+  // Unix seconds -> milliseconds
+  return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+};
 
 const goalLabels: Record<GoalMetric, { label: string; unit: string }> = {
   steps: { label: "Steps", unit: "steps" },
@@ -175,10 +190,15 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("Overview");
   const [sleepHours, setSleepHours] = useState<number | null>(null);
   const [sleepEditing, setSleepEditing] = useState(false);
-  const [historyWindow] = useState(() => ({
-    from: Date.now() - 30 * 24 * 60 * 60 * 1000,
-    to: Date.now(),
-  }));
+
+  // ✅ Fixed: historyWindow using useMemo
+  const historyWindow = useMemo(
+    () => ({
+      from: now.getTime() - 30 * 24 * 60 * 60 * 1000,
+      to: now.getTime(),
+    }),
+    [now],
+  );
 
   const historyQuery = trpc.activity.history.useQuery(historyWindow, {
     enabled: isAuthenticated,
@@ -221,8 +241,12 @@ export default function Home() {
 
   // Weight Prompt States
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
-  const [sessionCalories, setSessionCalories] = useState<number | null>(null);
   const [sessionData, setSessionData] = useState<any>(null);
+
+  // ✅ Fixed: queuedSessions as state so it updates immediately after queueing
+  const [queuedSessions, setQueuedSessions] = useState(
+    () => readQueuedSessions().length,
+  );
 
   // useRefs for Click Outside
   const sleepEditorRef = useRef<HTMLDivElement>(null);
@@ -315,8 +339,14 @@ export default function Home() {
     date.setHours(0, 0, 0, 0);
     return date.getTime();
   }, [now]);
+
+  // ✅ Fixed: normalize recordedAt so seconds/ms mismatch doesn't break today filter
   const todayRecords = useMemo(
-    () => records.filter((record: any) => record.recordedAt >= dayStart),
+    () =>
+      records.filter(
+        (record: any) =>
+          normalizeTimestampMs(record.recordedAt) >= dayStart,
+      ),
     [records, dayStart],
   );
   const todaySummary = useMemo(
@@ -333,13 +363,14 @@ export default function Home() {
     [todayRecords],
   );
 
+  // ✅ Fixed: use now.getTime() so the live duration updates every 30s
   const liveSession =
     phoneSensors.state === "active"
       ? {
           steps: phoneSensors.steps,
           distanceMeters: phoneSensors.distanceMeters,
           activeSeconds: phoneSensors.startedAt
-            ? Math.round((Date.now() - phoneSensors.startedAt) / 1000)
+            ? Math.round((now.getTime() - phoneSensors.startedAt) / 1000)
             : 0,
           calories: phoneSensors.calories,
         }
@@ -352,14 +383,25 @@ export default function Home() {
     calories: todaySummary.calories + liveSession.calories,
   };
 
-  const [stepGoal] = useState<number | null>(null);
+  // ✅ Fixed: derive stepGoal from the goals list instead of permanently-null state
+  const stepGoal =
+    goals.find((goal) => goal.metric === "steps")?.target ?? null;
+
   const stepProgress = stepGoal
     ? Math.min(100, Math.round((daily.steps / stepGoal) * 100))
     : 0;
-  const recentHistory = records.slice(-3).reverse();
-  const queuedSessions = useMemo(
-    () => readQueuedSessions().length,
-    [phoneSensors.isOnline, phoneSensors.state],
+
+  // ✅ Fixed: recentHistory sorting instead of assuming API order
+  const recentHistory = useMemo(
+    () =>
+      [...records]
+        .sort(
+          (a: any, b: any) =>
+            normalizeTimestampMs(b.recordedAt) -
+            normalizeTimestampMs(a.recordedAt),
+        )
+        .slice(0, 3),
+    [records],
   );
 
   const routePath = useMemo(() => {
@@ -385,6 +427,8 @@ export default function Home() {
   }, [phoneSensors.route]);
 
   const completedCount = tasks.filter((task: PersonalTask) => task.done).length;
+  const activityMinutes = Math.round(daily.activeSeconds / 60);
+
   const goalCurrentValue = (metric: GoalMetric) =>
     metric === "steps"
       ? daily.steps
@@ -396,7 +440,8 @@ export default function Home() {
             ? daily.calories
             : (sleepHours ?? 0);
 
-  const addGoal = (event: React.FormEvent<HTMLFormElement>) => {
+  // ✅ Fixed: use FormEvent type import instead of React.FormEvent
+  const addGoal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setGoals((current) => [
       ...current.filter((goal) => goal.metric !== goalMetric),
@@ -409,7 +454,8 @@ export default function Home() {
     setGoalDialogOpen(false);
   };
 
-  const addTask = (event: React.FormEvent<HTMLFormElement>) => {
+  // ✅ Fixed: use FormEvent type import instead of React.FormEvent
+  const addTask = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const title = taskTitle.trim();
     if (!title) return;
@@ -452,8 +498,8 @@ export default function Home() {
     hour: "numeric",
     minute: "2-digit",
   }).format(now);
-  const activityMinutes = Math.round(daily.activeSeconds / 60);
 
+  // ✅ Fixed: historyLabel with normalizeTimestampMs
   const historyLabel = !phoneSensors.isOnline
     ? "Offline · queued locally"
     : restSyncing
@@ -465,9 +511,19 @@ export default function Home() {
           : syncStatusQuery.error
             ? "Sync needs attention"
             : syncStatusQuery.data?.lastSyncedAt
-              ? `Last synced ${Math.max(1, Math.round((Date.now() - syncStatusQuery.data.lastSyncedAt) / 60000))} min ago`
+              ? (() => {
+                  const syncedAt = normalizeTimestampMs(
+                    syncStatusQuery.data.lastSyncedAt,
+                  );
+                  const minutes = Math.max(
+                    1,
+                    Math.round((Date.now() - syncedAt) / 60000),
+                  );
+                  return `Last synced ${minutes} min ago`;
+                })()
               : "Phone not synced yet";
 
+  // ✅ Fixed: normalize recordedAt inside the chart filter too
   const chartBars = useMemo(
     () =>
       Array.from({ length: timeRange === "Week" ? 7 : 30 }, (_, index) => {
@@ -478,10 +534,10 @@ export default function Home() {
         const start = date.getTime();
         const end = start + 24 * 60 * 60 * 1000;
         const value = records
-          .filter(
-            (record: any) =>
-              record.recordedAt >= start && record.recordedAt < end,
-          )
+          .filter((record: any) => {
+            const recordedAtMs = normalizeTimestampMs(record.recordedAt);
+            return recordedAtMs >= start && recordedAtMs < end;
+          })
           .reduce((sum: number, record: any) => sum + record.steps, 0);
         return {
           day: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(
@@ -504,8 +560,11 @@ export default function Home() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ Sync function - uses relative URL for Vercel
-  const syncSessionWithWeight = async (session: any, actualCalories: number) => {
+  // ✅ Fixed: syncSessionWithWeight now returns boolean success/failure
+  const syncSessionWithWeight = async (
+    session: any,
+    actualCalories: number,
+  ): Promise<boolean> => {
     const updatedSession = {
       ...session,
       calories: actualCalories,
@@ -513,67 +572,96 @@ export default function Home() {
 
     setRestSyncing(true);
     setRestSyncError(null);
-    
+
     try {
-      // ✅ Relative URL for Vercel
-      const response = await fetch(
-        "/api/trpc/activity.sync",
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ json: buildPhoneSyncPayload(updatedSession) }),
+      const response = await fetch("/api/activity/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
-      if (!response.ok) throw new Error("Activity sync request failed");
+        body: JSON.stringify(buildPhoneSyncPayload(updatedSession)),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Activity sync failed (${response.status})`);
+      }
+
       await historyQuery.refetch();
       await syncStatusQuery.refetch();
-      console.log("✅ Session synced with weight:", actualCalories);
+
+      console.log("Session synced with weight:", actualCalories);
+      return true;
     } catch (error) {
+      console.error("Activity sync error:", error);
       setRestSyncError(
         error instanceof Error ? error.message : "Activity sync unavailable",
       );
+      return false;
     } finally {
       setRestSyncing(false);
     }
   };
 
-  // ✅ Toggle tracking - weight prompt first, sync after
+  // ✅ Fixed: toggleTracking
   const toggleTracking = async () => {
     if (isTracking) {
-      // Stop tracking
+      /*
+       * Capture everything BEFORE stopping the sensor.
+       * stop() intentionally clears the live GPS route.
+       */
+      const sessionStartedAt = phoneSensors.startedAt;
+
+      const hasMeaningfulActivity =
+        phoneSensors.steps > 0 ||
+        phoneSensors.distanceMeters >= 10 ||
+        phoneSensors.speedKmh >= 1.0 ||
+        phoneSensors.route.length >= 2 ||
+        phoneSensors.activity !== "stationary";
+
+      if (!hasMeaningfulActivity) {
+        phoneSensors.stop();
+        setIsTracking(false);
+        console.log("Session ignored: no meaningful activity detected.");
+        return;
+      }
+
+      const session = {
+        externalId: `phone-session-${Date.now()}`,
+        recordedAt: Date.now(),
+        activityType: phoneSensors.activity,
+        steps: Math.max(0, phoneSensors.steps),
+        distanceMeters: Math.round(phoneSensors.distanceMeters),
+        activeSeconds: sessionStartedAt
+          ? Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000))
+          : 0,
+        calories: Math.max(0, phoneSensors.calories),
+        avgHeartRate: null as null,
+        route: [...phoneSensors.route],
+      };
+
+      /*
+       * Now stop the sensors.
+       * The session object already contains the route.
+       */
       phoneSensors.stop();
       setIsTracking(false);
 
-      // Agar steps hain toh weight prompt dikhao
-      if (phoneSensors.steps > 0) {
-        const session = {
-          externalId: `phone-session-${Date.now()}`,
-          recordedAt: Date.now(),
-          activityType: phoneSensors.activity,
-          steps: phoneSensors.steps,
-          distanceMeters: Math.round(phoneSensors.distanceMeters),
-          activeSeconds: phoneSensors.startedAt
-            ? Math.round((Date.now() - phoneSensors.startedAt) / 1000)
-            : 0,
-          calories: phoneSensors.calories,
-          avgHeartRate: null as null,
-          route: phoneSensors.route,
-        };
+      /*
+       * Save the session temporarily.
+       * It will NOT be queued yet.
+       *
+       * This is important because the final calorie value
+       * depends on the weight entered by the user.
+       */
+      setSessionData(session);
+      setShowWeightPrompt(true);
 
-        // ✅ Save session data, show weight prompt FIRST
-        setSessionCalories(phoneSensors.calories);
-        setSessionData(session);
-        setShowWeightPrompt(true);
-
-        // ✅ If offline, queue immediately
-        if (!phoneSensors.isOnline) {
-          queueSensorSession(session);
-        }
-      }
       return;
     }
-    setIsTracking(await phoneSensors.start());
+
+    const started = await phoneSensors.start();
+    setIsTracking(started);
   };
 
   return (
@@ -650,14 +738,14 @@ export default function Home() {
           <button
             className="profile"
             onClick={() => {
-              console.log("🔑 Profile clicked - isAuthenticated:", isAuthenticated);
+              console.log("Profile clicked - isAuthenticated:", isAuthenticated);
               if (isAuthenticated) {
-                console.log("👤 User is authenticated, showing logout confirm");
+                console.log("User is authenticated, showing logout confirm");
                 if (confirm("Are you sure you want to logout?")) {
                   logout();
                 }
               } else {
-                console.log("🔑 User not authenticated, opening login modal");
+                console.log("User not authenticated, opening login modal");
                 setShowLoginModal(true);
               }
             }}
@@ -764,7 +852,7 @@ export default function Home() {
                   <div>
                     <span className="stat-label"><Footprints size={14} /> Steps</span>
                     <strong>
-                      {daily.steps ? daily.steps.toLocaleString() : "—"}
+                      {daily.steps.toLocaleString()}
                       {stepGoal && <small>/ {stepGoal.toLocaleString()}</small>}
                     </strong>
                     {stepGoal && (
@@ -870,7 +958,7 @@ export default function Home() {
                   <MetricCard
                     icon={Footprints}
                     label="Steps"
-                    value={daily.steps ? daily.steps.toLocaleString() : "—"}
+                    value={daily.steps.toLocaleString()}
                     unit=""
                     change={daily.steps ? "Live" : "No data"}
                     tone="citron"
@@ -897,7 +985,7 @@ export default function Home() {
                   <MetricCard
                     icon={Zap}
                     label="Active calories"
-                    value={daily.calories ? daily.calories.toLocaleString() : "—"}
+                    value={daily.calories.toLocaleString()}
                     unit=" kcal"
                     change={daily.calories ? "Estimated" : "No data"}
                     tone="peach"
@@ -1175,7 +1263,7 @@ export default function Home() {
                       <span>{record.steps.toLocaleString()} steps</span>
                       <span>{(record.distanceMeters / 1000).toFixed(2)} km</span>
                       <time>
-                        {new Date(record.recordedAt).toLocaleDateString(undefined, {
+                        {new Date(normalizeTimestampMs(record.recordedAt)).toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
                         })}
@@ -1234,7 +1322,13 @@ export default function Home() {
                   <Activity size={17} />
                   <div>
                     <strong>Phone session synced successfully</strong>
-                    <span>Last checkpoint {new Date(syncStatusQuery.data.lastSyncedAt).toLocaleString()}.</span>
+                    <span>
+                      Last checkpoint{" "}
+                      {new Date(
+                        normalizeTimestampMs(syncStatusQuery.data.lastSyncedAt),
+                      ).toLocaleString()}
+                      .
+                    </span>
                   </div>
                   <span className="sync-ok">Ready</span>
                 </div>
@@ -1264,7 +1358,7 @@ export default function Home() {
                       : "GPS coordinate appears after permission is granted."}
                 </span>
               </div>
-              {routePath && (
+              {isTracking && routePath && (
                 <div className="route-preview" aria-label={`${phoneSensors.route.length} GPS route points captured`}>
                   <svg viewBox="0 0 100 100" role="img">
                     <path d={routePath} />
@@ -1274,13 +1368,22 @@ export default function Home() {
               )}
               <div className="sensor-values">
                 <span>
-                  <strong>{phoneSensors.steps || "—"}</strong> steps
+                  <strong>
+                    {phoneSensors.steps.toLocaleString()}
+                  </strong>{" "}
+                  steps
                 </span>
                 <span>
-                  <strong>{phoneSensors.speedKmh ? phoneSensors.speedKmh.toFixed(1) : "—"}</strong> km/h
+                  <strong>
+                    {phoneSensors.speedKmh.toFixed(1)}
+                  </strong>{" "}
+                  km/h
                 </span>
                 <span>
-                  <strong>{phoneSensors.calories || "—"}</strong> kcal est.
+                  <strong>
+                    {phoneSensors.calories.toLocaleString()}
+                  </strong>{" "}
+                  kcal est.
                 </span>
               </div>
               {phoneSensors.permissionError && (
@@ -1509,11 +1612,11 @@ export default function Home() {
           <LoginModal
             isOpen={showLoginModal}
             onClose={() => {
-              console.log("🔑 Closing login modal");
+              console.log("Closing login modal");
               setShowLoginModal(false);
             }}
             onLogin={(name) => {
-              console.log("🔑 Login with name:", name);
+              console.log("Login with name:", name);
               handleLogin(name);
             }}
             isLoading={loading}
@@ -1526,28 +1629,58 @@ export default function Home() {
               setShowWeightPrompt(false);
               setSessionData(null);
             }}
-            onSave={(weight) => {
-              console.log("✅ Weight saved:", weight);
-              
-              if (sessionCalories !== null) {
-                const actualCalories = Math.round(sessionCalories * (weight / 70));
-                console.log("🔥 Updated calories:", actualCalories);
-                
-                // Show calories to user
-                alert(`🔥 You burned approximately ${actualCalories} kcal!`);
-                
-                // NOW sync the data with updated calories
-                if (sessionData && isAuthenticated) {
-                  syncSessionWithWeight(sessionData, actualCalories);
-                }
+            onSave={async (weight) => {
+              if (!sessionData) {
+                return;
               }
-              
+
+              const baseCalories = Number(sessionData.calories) || 0;
+
+              const actualCalories = Math.max(
+                0,
+                Math.round(baseCalories * (weight / 70)),
+              );
+
+              const finalSession = {
+                ...sessionData,
+                calories: actualCalories,
+              };
+
+              console.log("Weight saved:", weight);
+              console.log("Final session:", finalSession);
+
+              /*
+               * IMPORTANT:
+               * Queue/sync ONLY after weight is saved.
+               *
+               * ✅ Fixed: if online sync fails, queue locally so
+               * the session is not lost.
+               */
+              let synced = false;
+              if (phoneSensors.isOnline && isAuthenticated) {
+                synced = await syncSessionWithWeight(
+                  finalSession,
+                  actualCalories,
+                );
+              }
+
+              if (!synced) {
+                queueSensorSession(finalSession);
+                setQueuedSessions(readQueuedSessions().length);
+                console.log(
+                  "Session queued locally:",
+                  finalSession.externalId,
+                );
+              }
+
               setShowWeightPrompt(false);
               setSessionData(null);
+
+              alert(`You burned approximately ${actualCalories} kcal.`);
             }}
-            calories={sessionCalories}
-            steps={phoneSensors.steps}
-            distance={phoneSensors.distanceMeters}
+            calories={sessionData?.calories ?? null}
+            steps={sessionData?.steps ?? 0}
+            distance={sessionData?.distanceMeters ?? 0}
           />
         </div>
       </main>
