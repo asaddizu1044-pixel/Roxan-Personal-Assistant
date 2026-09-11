@@ -1,4 +1,4 @@
-/* Roxan Personal Assistant: live workspace shell with sensor/database-backed values and honest empty states. */
+
 import {
   useEffect,
   useMemo,
