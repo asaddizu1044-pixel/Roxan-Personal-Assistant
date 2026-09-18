@@ -38,7 +38,8 @@ type SensorSnapshot = {
   motionPeak: number;
 };
 
-const STEP_THRESHOLD = 0.8;
+// Slightly lower threshold to work on more devices
+const STEP_THRESHOLD = 0.5;
 const STEP_COOLDOWN_MS = 300;
 const DEFAULT_STRIDE_METERS = 0.74;
 
@@ -365,6 +366,7 @@ export function usePhoneSensors() {
         x ** 2 + y ** 2 + z ** 2,
       );
 
+      // When using accelerationIncludingGravity, remove approximate gravity.
       const dynamicMagnitude = acceleration
         ? magnitude
         : Math.abs(magnitude - 9.81);
@@ -411,6 +413,13 @@ export function usePhoneSensors() {
         stepCount.current += 1;
         lastStepAt.current = now;
         lastStepPeak.current = previousMotionValue.current;
+
+        // Debug: log detected steps
+        // console.log("STEP DETECTED", {
+        //   stepCount: stepCount.current,
+        //   previousMotionValue: previousMotionValue.current,
+        //   safeMotion,
+        // });
       }
 
       previousPreviousMotionValue.current =
@@ -418,6 +427,15 @@ export function usePhoneSensors() {
 
       previousMotionValue.current = safeMotion;
       lastMotionValue.current = safeMotion;
+
+      // Debug: log every motion sample (enable while troubleshooting)
+      // console.log("MOTION SAMPLE", {
+      //   safeMotion,
+      //   previous: previousMotionValue.current,
+      //   previousPrevious: previousPreviousMotionValue.current,
+      //   isPeak,
+      //   stepCount: stepCount.current,
+      // });
 
       const currentSpeed = smoothedSpeed.current;
 
@@ -867,6 +885,9 @@ export function usePhoneSensors() {
     setSnapshot((current) => ({
       ...current,
       state: "idle",
+      steps: 0,
+      distanceMeters: 0,
+      calories: 0,
       speedKmh: 0,
       activity: "stationary",
       coordinates: null,
@@ -909,7 +930,5 @@ function strideDistanceMeters(
   steps: number,
   stride: number,
 ) {
-  return (
-    Math.max(0, steps) * stride
-  );
+  return Math.max(0, steps) * stride;
 }
