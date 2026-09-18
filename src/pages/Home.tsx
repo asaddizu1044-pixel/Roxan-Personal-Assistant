@@ -229,7 +229,7 @@ export default function Home() {
   });
   const syncStatusQuery = trpc.activity.syncStatus.useQuery(
     { source: "phone", deviceId: "browser-phone" },
-    { enabled: isAuthenticated, retry: 1 },
+    { enabled: isAuthenticated, retry: 1, refetchInterval: 5000 },
   );
 
   const [restSyncing, setRestSyncing] = useState(false);
