@@ -38,7 +38,6 @@ type SensorSnapshot = {
   motionPeak: number;
 };
 
-const STEP_THRESHOLD = 0.8;
 const STEP_COOLDOWN_MS = 300;
 const DEFAULT_STRIDE_METERS = 0.74;
 
@@ -85,6 +84,7 @@ export function usePhoneSensors() {
   const previousPreviousMotionValue = useRef(0);
   const lastStepPeak = useRef(0);
   const lastStepValley = useRef(0);
+  const stepArmed = useRef(false);
 
   const lastCoordinates = useRef<Coordinates | null>(null);
   const lastLocationAt = useRef<number | null>(null);
@@ -365,9 +365,22 @@ export function usePhoneSensors() {
         x ** 2 + y ** 2 + z ** 2,
       );
 
-      const dynamicMagnitude = acceleration
-        ? magnitude
-        : Math.abs(magnitude - 9.81);
+      /*
+       * Permanent gravity handling.
+       *
+       * Some browsers report accelerationIncludingGravity as (0,0,0),
+       * which produces |0 - 9.81| = 9.81 constant every sample. That
+       * looks like a frozen "9.81 spike" and blocks all peak detection.
+       * Treat >5 as a broken reading, not motion.
+       */
+      let dynamicMagnitude = 0;
+
+      if (acceleration) {
+        dynamicMagnitude = magnitude;
+      } else if (accelerationWithGravity) {
+        const gravityRemoved = Math.abs(magnitude - 9.81);
+        dynamicMagnitude = gravityRemoved > 5 ? 0 : gravityRemoved;
+      }
 
       const safeMotion = Number.isFinite(dynamicMagnitude)
         ? dynamicMagnitude
@@ -390,33 +403,36 @@ export function usePhoneSensors() {
 
       const now = Date.now();
 
-      const previous = previousMotionValue.current;
-      const previousPrevious = previousPreviousMotionValue.current;
+      /*
+       * Permanent step detector.
+       *
+       * Schmitt-trigger (hysteresis) + low-pass:
+       *   - smoothed signal must rise above STEP_HIGH to arm a step
+       *   - it must fall below STEP_LOW before another step can fire
+       *   - a 300 ms cooldown blocks double-counting
+       *
+       * Works on weak Android signals (0.05-0.25) and strong iPhone
+       * signals (0.5-1.5) without per-device tuning. Does not require
+       * the signal to drop all the way to zero between steps, which is
+       * what was killing step detection on weaker devices.
+       */
+      const STEP_HIGH = 0.12;
+      const STEP_LOW = 0.04;
 
-      const isPeak =
-        previous > previousPrevious &&
-        previous >= safeMotion &&
-        previous >= STEP_THRESHOLD;
+      const smoothed =
+        previousMotionValue.current * 0.6 + safeMotion * 0.4;
 
-      const peakStrength =
-        previous - Math.min(previousPrevious, safeMotion);
+      if (!stepArmed.current && smoothed >= STEP_HIGH) {
+        stepArmed.current = true;
 
-      const minimumPeakStrength = 0.35;
-
-      if (
-        isPeak &&
-        peakStrength >= minimumPeakStrength &&
-        now - lastStepAt.current >= STEP_COOLDOWN_MS
-      ) {
-        stepCount.current += 1;
-        lastStepAt.current = now;
-        lastStepPeak.current = previous;
+        if (now - lastStepAt.current >= STEP_COOLDOWN_MS) {
+          stepCount.current += 1;
+          lastStepAt.current = now;
+          lastStepPeak.current = smoothed;
+        }
+      } else if (stepArmed.current && smoothed <= STEP_LOW) {
+        stepArmed.current = false;
       }
-
-      lastStepValley.current = Math.min(
-        lastStepValley.current || safeMotion,
-        safeMotion,
-      );
 
       previousPreviousMotionValue.current =
         previousMotionValue.current;
@@ -737,6 +753,7 @@ export function usePhoneSensors() {
       previousPreviousMotionValue.current = 0;
       lastStepPeak.current = 0;
       lastStepValley.current = 0;
+      stepArmed.current = false;
       lastCoordinates.current = null;
       lastLocationAt.current = null;
 
@@ -855,6 +872,7 @@ export function usePhoneSensors() {
     previousPreviousMotionValue.current = 0;
     lastStepPeak.current = 0;
     lastStepValley.current = 0;
+    stepArmed.current = false;
 
     lastCoordinates.current = null;
     lastLocationAt.current = null;
@@ -873,6 +891,9 @@ export function usePhoneSensors() {
     setSnapshot((current) => ({
       ...current,
       state: "idle",
+      steps: 0,
+      distanceMeters: 0,
+      calories: 0,
       speedKmh: 0,
       activity: "stationary",
       coordinates: null,
