@@ -38,8 +38,7 @@ type SensorSnapshot = {
   motionPeak: number;
 };
 
-// Slightly lower threshold to work on more devices
-const STEP_THRESHOLD = 0.5;
+const STEP_THRESHOLD = 0.8;
 const STEP_COOLDOWN_MS = 300;
 const DEFAULT_STRIDE_METERS = 0.74;
 
@@ -82,10 +81,10 @@ export function usePhoneSensors() {
   const lastStepAt = useRef(0);
   const lastMotionValue = useRef(0);
 
-  // New motion refs for robust step detection
   const previousMotionValue = useRef(0);
   const previousPreviousMotionValue = useRef(0);
   const lastStepPeak = useRef(0);
+  const lastStepValley = useRef(0);
 
   const lastCoordinates = useRef<Coordinates | null>(null);
   const lastLocationAt = useRef<number | null>(null);
@@ -366,7 +365,6 @@ export function usePhoneSensors() {
         x ** 2 + y ** 2 + z ** 2,
       );
 
-      // When using accelerationIncludingGravity, remove approximate gravity.
       const dynamicMagnitude = acceleration
         ? magnitude
         : Math.abs(magnitude - 9.81);
@@ -392,50 +390,39 @@ export function usePhoneSensors() {
 
       const now = Date.now();
 
-      /*
-       * Robust step detection:
-       * Detect a local acceleration peak instead of requiring the
-       * signal to cross below the threshold between every step.
-       *
-       * This works better across different phones because some
-       * devices keep acceleration above the old threshold for
-       * several sensor samples.
-       */
+      const previous = previousMotionValue.current;
+      const previousPrevious = previousPreviousMotionValue.current;
+
       const isPeak =
-        previousMotionValue.current > previousPreviousMotionValue.current &&
-        previousMotionValue.current >= safeMotion &&
-        previousMotionValue.current >= STEP_THRESHOLD;
+        previous > previousPrevious &&
+        previous >= safeMotion &&
+        previous >= STEP_THRESHOLD;
+
+      const peakStrength =
+        previous - Math.min(previousPrevious, safeMotion);
+
+      const minimumPeakStrength = 0.35;
 
       if (
         isPeak &&
+        peakStrength >= minimumPeakStrength &&
         now - lastStepAt.current >= STEP_COOLDOWN_MS
       ) {
         stepCount.current += 1;
         lastStepAt.current = now;
-        lastStepPeak.current = previousMotionValue.current;
-
-        // Debug: log detected steps
-        // console.log("STEP DETECTED", {
-        //   stepCount: stepCount.current,
-        //   previousMotionValue: previousMotionValue.current,
-        //   safeMotion,
-        // });
+        lastStepPeak.current = previous;
       }
+
+      lastStepValley.current = Math.min(
+        lastStepValley.current || safeMotion,
+        safeMotion,
+      );
 
       previousPreviousMotionValue.current =
         previousMotionValue.current;
 
       previousMotionValue.current = safeMotion;
       lastMotionValue.current = safeMotion;
-
-      // Debug: log every motion sample (enable while troubleshooting)
-      // console.log("MOTION SAMPLE", {
-      //   safeMotion,
-      //   previous: previousMotionValue.current,
-      //   previousPrevious: previousPreviousMotionValue.current,
-      //   isPeak,
-      //   stepCount: stepCount.current,
-      // });
 
       const currentSpeed = smoothedSpeed.current;
 
@@ -749,7 +736,7 @@ export function usePhoneSensors() {
       previousMotionValue.current = 0;
       previousPreviousMotionValue.current = 0;
       lastStepPeak.current = 0;
-
+      lastStepValley.current = 0;
       lastCoordinates.current = null;
       lastLocationAt.current = null;
 
@@ -867,6 +854,7 @@ export function usePhoneSensors() {
     previousMotionValue.current = 0;
     previousPreviousMotionValue.current = 0;
     lastStepPeak.current = 0;
+    lastStepValley.current = 0;
 
     lastCoordinates.current = null;
     lastLocationAt.current = null;
@@ -885,9 +873,6 @@ export function usePhoneSensors() {
     setSnapshot((current) => ({
       ...current,
       state: "idle",
-      steps: 0,
-      distanceMeters: 0,
-      calories: 0,
       speedKmh: 0,
       activity: "stationary",
       coordinates: null,
@@ -930,5 +915,7 @@ function strideDistanceMeters(
   steps: number,
   stride: number,
 ) {
-  return Math.max(0, steps) * stride;
+  return (
+    Math.max(0, steps) * stride
+  );
 }
