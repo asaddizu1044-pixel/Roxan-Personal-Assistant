@@ -94,9 +94,20 @@ const appRouter = t.router({
       .query(async ({ input }) => {
         console.log("📊 History request:", input.from, input.to);
         const db = await getDb();
-        const records = await db.collection('activity_records')
+
+        const allUsers = await db.collection('users').find().toArray();
+        const userId = currentUser?._id ?? (allUsers.length > 0 ? allUsers[0]._id : null);
+
+        if (!userId) {
+          console.warn("⚠️ No user available for activity history; returning empty.");
+          return [];
+        }
+
+        const records = await db
+          .collection('activity_records')
           .find({
-            recordedAt: { $gte: input.from, $lte: input.to }
+            userId,
+            recordedAt: { $gte: input.from, $lte: input.to },
           })
           .sort({ recordedAt: 1 })
           .toArray();
@@ -109,22 +120,32 @@ const appRouter = t.router({
       }),
 
     sync: t.procedure
-      .input(z.object({
-        source: z.enum(["phone", "watch", "wearable"]),
-        deviceId: z.string(),
-        cursor: z.string().optional(),
-        records: z.array(z.object({
-          externalId: z.string(),
-          recordedAt: z.number(),
-          activityType: z.enum(["stationary", "walking", "running", "cycling", "exercise"]),
-          steps: z.number(),
-          distanceMeters: z.number(),
-          activeSeconds: z.number(),
-          calories: z.number(),
-          avgHeartRate: z.number().nullable().optional(),
-          route: z.array(z.any()).optional(),
-        })),
-      }))
+      .input(
+        z.object({
+          source: z.enum(["phone", "watch", "wearable"]),
+          deviceId: z.string(),
+          cursor: z.string().optional(),
+          records: z.array(
+            z.object({
+              externalId: z.string(),
+              recordedAt: z.number(),
+              activityType: z.enum([
+                "stationary",
+                "walking",
+                "running",
+                "cycling",
+                "exercise",
+              ]),
+              steps: z.number(),
+              distanceMeters: z.number(),
+              activeSeconds: z.number(),
+              calories: z.number(),
+              avgHeartRate: z.number().nullable().optional(),
+              route: z.array(z.any()).optional(),
+            }),
+          ),
+        }),
+      )
       .mutation(async ({ input }) => {
         console.log("📤 Sync request:", input.records.length, "records");
         const db = await getDb();
@@ -142,19 +163,19 @@ const appRouter = t.router({
           const result = await db.collection('activity_records').updateOne(
             {
               externalId: record.externalId,
-              userId: userId,
+              userId,
             },
             {
               $set: {
                 ...record,
                 source: input.source,
                 deviceId: input.deviceId,
-                userId: userId,
+                userId,
                 updatedAt: now,
               },
               $setOnInsert: { createdAt: now },
             },
-            { upsert: true }
+            { upsert: true },
           );
           if (result.upsertedCount || result.modifiedCount) {
             accepted++;
@@ -165,7 +186,7 @@ const appRouter = t.router({
           {
             source: input.source,
             deviceId: input.deviceId,
-            userId: userId,
+            userId,
           },
           {
             $set: {
@@ -174,10 +195,10 @@ const appRouter = t.router({
               cursor: input.cursor || null,
               lastSyncedAt: Date.now(),
               updatedAt: now,
-              userId: userId,
+              userId,
             },
           },
-          { upsert: true }
+          { upsert: true },
         );
 
         console.log(`📤 Synced ${accepted} records to MongoDB`);
@@ -190,15 +211,32 @@ const appRouter = t.router({
       }),
 
     syncStatus: t.procedure
-      .input(z.object({ source: z.enum(["phone", "watch", "wearable"]), deviceId: z.string() }))
+      .input(
+        z.object({
+          source: z.enum(["phone", "watch", "wearable"]),
+          deviceId: z.string(),
+        }),
+      )
       .query(async ({ input }) => {
         console.log("📡 Sync status for:", input.source, input.deviceId);
         const db = await getDb();
+
+        const allUsers = await db.collection('users').find().toArray();
+        const userId = currentUser?._id ?? (allUsers.length > 0 ? allUsers[0]._id : null);
+
+        if (!userId) {
+          return {
+            lastSyncedAt: null,
+            cursor: null,
+          };
+        }
+
         const cursor = await db.collection('sync_cursors').findOne({
           source: input.source,
           deviceId: input.deviceId,
-          userId: currentUser?._id || null,
+          userId,
         });
+
         return {
           lastSyncedAt: cursor?.lastSyncedAt || null,
           cursor: cursor?.cursor || null,
@@ -207,21 +245,23 @@ const appRouter = t.router({
   }),
 });
 
-// ✅ Create Express app
 const app = express();
 
-app.use(cors({
-  origin: true,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }),
+);
 
-app.use(express.json({
-  limit: '10mb',
-}));
+app.use(
+  express.json({
+    limit: '10mb',
+  }),
+);
 
-// ✅ Health check
 app.get('/api/health', async (req, res) => {
   try {
     const db = await getDb();
@@ -229,19 +269,18 @@ app.get('/api/health', async (req, res) => {
     res.json({
       status: 'ok',
       database: 'MongoDB Atlas',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   } catch (error) {
     console.error("❌ Health check error:", error);
     res.status(500).json({
       status: 'error',
       error: 'Database connection failed',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
 
-// ✅ REST activity sync endpoint
 app.post('/api/activity/sync', async (req, res) => {
   try {
     const input = req.body;
@@ -249,7 +288,7 @@ app.post('/api/activity/sync', async (req, res) => {
     console.log(
       "📤 REST activity sync request:",
       input?.records?.length || 0,
-      "records"
+      "records",
     );
 
     const db = await getDb();
@@ -266,10 +305,10 @@ app.post('/api/activity/sync', async (req, res) => {
       });
     }
 
-    // Use the currently logged-in user when available.
-    // Fall back to the first user only for this simple local setup.
     const allUsers = await db.collection("users").find().toArray();
     const userId = currentUser?._id ?? (allUsers.length > 0 ? allUsers[0]._id : null);
+
+    console.log("🔍 REST sync userId:", userId, "currentUser:", currentUser?.name || null);
 
     if (!userId) {
       return res.status(401).json({
@@ -292,14 +331,14 @@ app.post('/api/activity/sync', async (req, res) => {
       const result = await db.collection("activity_records").updateOne(
         {
           externalId: record.externalId,
-          userId: userId,
+          userId,
         },
         {
           $set: {
             ...record,
             source: input.source,
             deviceId: input.deviceId,
-            userId: userId,
+            userId,
             updatedAt: now,
           },
           $setOnInsert: {
@@ -308,7 +347,7 @@ app.post('/api/activity/sync', async (req, res) => {
         },
         {
           upsert: true,
-        }
+        },
       );
 
       if (result.upsertedCount > 0 || result.modifiedCount > 0) {
@@ -322,7 +361,7 @@ app.post('/api/activity/sync', async (req, res) => {
       {
         source: input.source,
         deviceId: input.deviceId,
-        userId: userId,
+        userId,
       },
       {
         $set: {
@@ -331,16 +370,16 @@ app.post('/api/activity/sync', async (req, res) => {
           cursor: input.cursor ?? null,
           lastSyncedAt,
           updatedAt: now,
-          userId: userId,
+          userId,
         },
       },
       {
         upsert: true,
-      }
+      },
     );
 
     console.log(
-      `✅ REST sync completed: ${accepted}/${input.records.length} records`
+      `✅ REST sync completed: ${accepted}/${input.records.length} records`,
     );
 
     return res.status(200).json({
@@ -353,31 +392,29 @@ app.post('/api/activity/sync', async (req, res) => {
 
     return res.status(500).json({
       error: "Activity sync failed",
-      message:
-        error instanceof Error ? error.message : "Unknown server error",
+      message: error instanceof Error ? error.message : 'Unknown server error',
     });
   }
 });
 
-// ✅ tRPC middleware
-app.use('/api/trpc', createExpressMiddleware({
-  router: appRouter,
-  createContext: ({ req, res }) => {
-    console.log("📡 tRPC request:", req.method, req.url);
-    return { req, res };
-  },
-}));
+app.use(
+  '/api/trpc',
+  createExpressMiddleware({
+    router: appRouter,
+    createContext: ({ req, res }) => {
+      console.log("📡 tRPC request:", req.method, req.url);
+      return { req, res };
+    },
+  }),
+);
 
-// ✅ Handle 404
 app.use((req, res) => {
   res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
 });
 
-// ✅ Error handler
 app.use((err: any, req: any, res: any, next: any) => {
   console.error("❌ Error:", err);
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// ✅ Export for Vercel
 export default app;

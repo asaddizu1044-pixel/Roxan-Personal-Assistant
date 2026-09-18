@@ -923,6 +923,7 @@ function strideDistanceMeters(
 }
   */
 
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type SensorState =
@@ -1278,8 +1279,6 @@ export function usePhoneSensors() {
         return;
       }
 
-      motionAvailable.current = true;
-
       const magnitude = Math.sqrt(x ** 2 + y ** 2 + z ** 2);
 
       const isBrokenSensor =
@@ -1288,17 +1287,28 @@ export function usePhoneSensors() {
         Math.abs(y) < 0.01 &&
         Math.abs(z) < 0.01;
 
-      let safeMotion = 0;
+      if (isBrokenSensor) {
+        motionAvailable.current = false;
 
-      if (!isBrokenSensor) {
-        const dynamicMagnitude = acceleration
-          ? magnitude
-          : Math.abs(magnitude - 9.81);
+        setSnapshot((current) => ({
+          ...current,
+          accelerationMagnitude: 0,
+          motionAverage: 0,
+          motionPeak: 0,
+        }));
 
-        safeMotion = Number.isFinite(dynamicMagnitude)
-          ? dynamicMagnitude
-          : 0;
+        return;
       }
+
+      motionAvailable.current = true;
+
+      const dynamicMagnitude = acceleration
+        ? magnitude
+        : Math.abs(magnitude - 9.81);
+
+      const safeMotion = Number.isFinite(dynamicMagnitude)
+        ? dynamicMagnitude
+        : 0;
 
       const rawSamples = [
         ...motionSamples.current.slice(-4),

@@ -1,4 +1,3 @@
-
 import {
   useEffect,
   useMemo,
@@ -9,8 +8,13 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { usePhoneSensors } from "@/hooks/usePhoneSensors";
-import { readQueuedSessions, queueSensorSession } from "@/storage/offlineQueue";
-import { buildPhoneSyncPayload } from "@/services/synchronization/activitySync";
+import {
+  buildPhoneSyncPayload,
+  readQueuedSessions,
+  queueSensorSession,
+  removeQueuedSession,
+  flushQueuedSessions,
+} from "@/services/synchronization/activitySync";
 import {
   Activity,
   ArrowUpRight,
@@ -72,12 +76,10 @@ type Coordinates = {
   accuracy: number;
 };
 
-// ✅ Timestamp helper
 const normalizeTimestampMs = (timestamp: number): number => {
   if (!Number.isFinite(timestamp)) {
     return 0;
   }
-  // Unix seconds -> milliseconds
   return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
 };
 
@@ -213,7 +215,6 @@ export default function Home() {
   const [sleepHours, setSleepHours] = useState<number | null>(null);
   const [sleepEditing, setSleepEditing] = useState(false);
 
-  // ✅ Fixed: historyWindow using useMemo
   const historyWindow = useMemo(
     () => ({
       from: now.getTime() - 30 * 24 * 60 * 60 * 1000,
@@ -265,22 +266,18 @@ export default function Home() {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskNote, setTaskNote] = useState("");
 
-  // Weight Prompt States
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
   const [sessionData, setSessionData] = useState<any>(null);
 
-  // ✅ Fixed: queuedSessions as state so it updates immediately after queueing
   const [queuedSessions, setQueuedSessions] = useState(
     () => readQueuedSessions().length,
   );
 
-  // useRefs for Click Outside
   const sleepEditorRef = useRef<HTMLDivElement>(null);
   const goalModalRef = useRef<HTMLDivElement>(null);
   const taskModalRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLElement>(null);
 
-  // Click Outside Handlers
   useEffect(() => {
     if (!sleepEditing) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -363,6 +360,23 @@ export default function Home() {
     );
   }, [tasks]);
 
+  useEffect(() => {
+    if (!phoneSensors.isOnline || !isAuthenticated) return;
+
+    let ignored = false;
+
+    flushQueuedSessions().then(({ ok, failed }) => {
+      if (ignored) return;
+      if (ok > 0 || failed > 0) {
+        setQueuedSessions(readQueuedSessions().length);
+      }
+    });
+
+    return () => {
+      ignored = true;
+    };
+  }, [phoneSensors.isOnline, isAuthenticated]);
+
   const records = historyQuery.data ?? [];
   const dayStart = useMemo(() => {
     const date = new Date(now);
@@ -370,7 +384,6 @@ export default function Home() {
     return date.getTime();
   }, [now]);
 
-  // ✅ Fixed: normalize recordedAt so seconds/ms mismatch doesn't break today filter
   const todayRecords = useMemo(
     () =>
       records.filter(
@@ -400,7 +413,6 @@ export default function Home() {
     [todayRecords],
   );
 
-  // ✅ Fixed: use now.getTime() so the live duration updates every 30s
   const liveSession =
     phoneSensors.state === "active"
       ? {
@@ -424,7 +436,6 @@ export default function Home() {
     calories: todaySummary.calories + liveSession.calories,
   };
 
-  // ✅ Fixed: derive stepGoal from the goals list instead of permanently-null state
   const stepGoal =
     goals.find((goal) => goal.metric === "steps")?.target ?? null;
 
@@ -432,7 +443,6 @@ export default function Home() {
     ? Math.min(100, Math.round((daily.steps / stepGoal) * 100))
     : 0;
 
-  // ✅ Fixed: recentHistory sorting instead of assuming API order
   const recentHistory = useMemo(
     () =>
       [...records]
@@ -483,96 +493,6 @@ export default function Home() {
             ? daily.calories
             : (sleepHours ?? 0);
 
-  // ✅ Fixed: use FormEvent type import instead of React.FormEvent
-  const addGoal = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setGoals((current) => [
-      ...current.filter((goal) => goal.metric !== goalMetric),
-      {
-        id: crypto.randomUUID(),
-        metric: goalMetric,
-        target: Math.max(0.25, Number(goalTarget)),
-      },
-    ]);
-    setGoalDialogOpen(false);
-  };
-
-  // ✅ Fixed: use FormEvent type import instead of React.FormEvent
-  const addTask = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const title = taskTitle.trim();
-    if (!title) return;
-    setTasks((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        title,
-        note: taskNote.trim(),
-        done: false,
-      },
-    ]);
-    setTaskTitle("");
-    setTaskNote("");
-    setTaskDialogOpen(false);
-  };
-
-  const firstName =
-    user?.name?.trim().split(/\s+/)[0] ?? "there";
-  const initials =
-    user?.name
-      ?.trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part: string) => part[0])
-      .join("")
-      .toUpperCase() || "—";
-  const greeting =
-    now.getHours() < 12
-      ? "Good morning"
-      : now.getHours() < 18
-        ? "Good afternoon"
-        : "Good evening";
-  const dateLabel = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(now);
-  const dateShortLabel = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(now);
-  const timeLabel = new Intl.DateTimeFormat(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(now);
-
-  // ✅ Fixed: historyLabel with normalizeTimestampMs
-  const historyLabel = !phoneSensors.isOnline
-    ? "Offline · queued locally"
-    : restSyncing
-      ? "Uploading session"
-      : restSyncError
-        ? "Sync needs attention"
-        : syncStatusQuery.isLoading
-          ? "Checking phone sync"
-          : syncStatusQuery.error
-            ? "Sync needs attention"
-            : syncStatusQuery.data?.lastSyncedAt
-              ? (() => {
-                  const syncedAt = normalizeTimestampMs(
-                    syncStatusQuery.data.lastSyncedAt,
-                  );
-                  const minutes = Math.max(
-                    1,
-                    Math.round((Date.now() - syncedAt) / 60000),
-                  );
-                  return `Last synced ${minutes} min ago`;
-                })()
-              : "Phone not synced yet";
-
-  // ✅ Fixed: normalize recordedAt inside the chart filter too
   const chartBars = useMemo(
     () =>
       Array.from(
@@ -614,6 +534,37 @@ export default function Home() {
     1,
   );
 
+  const addGoal = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setGoals((current) => [
+      ...current.filter((goal) => goal.metric !== goalMetric),
+      {
+        id: crypto.randomUUID(),
+        metric: goalMetric,
+        target: Math.max(0.25, Number(goalTarget)),
+      },
+    ]);
+    setGoalDialogOpen(false);
+  };
+
+  const addTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = taskTitle.trim();
+    if (!title) return;
+    setTasks((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        title,
+        note: taskNote.trim(),
+        done: false,
+      },
+    ]);
+    setTaskTitle("");
+    setTaskNote("");
+    setTaskDialogOpen(false);
+  };
+
   const goTo = (label: string) => {
     setActiveNav(label);
     setShowMobileNav(false);
@@ -624,7 +575,61 @@ export default function Home() {
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ Fixed: syncSessionWithWeight now returns boolean success/failure and verifies history
+  const firstName =
+    user?.name?.trim().split(/\s+/)[0] ?? "there";
+  const initials =
+    user?.name
+      ?.trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part: string) => part[0])
+      .join("")
+      .toUpperCase() || "—";
+  const greeting =
+    now.getHours() < 12
+      ? "Good morning"
+      : now.getHours() < 18
+        ? "Good afternoon"
+        : "Good evening";
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(now);
+  const dateShortLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(now);
+  const timeLabel = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(now);
+
+  const historyLabel = !phoneSensors.isOnline
+    ? "Offline · queued locally"
+    : restSyncing
+      ? "Uploading session"
+      : restSyncError
+        ? "Sync needs attention"
+        : syncStatusQuery.isLoading
+          ? "Checking phone sync"
+          : syncStatusQuery.error
+            ? "Sync needs attention"
+            : syncStatusQuery.data?.lastSyncedAt
+              ? (() => {
+                  const syncedAt = normalizeTimestampMs(
+                    syncStatusQuery.data.lastSyncedAt,
+                  );
+                  const minutes = Math.max(
+                    1,
+                    Math.round((Date.now() - syncedAt) / 60000),
+                  );
+                  return `Last synced ${minutes} min ago`;
+                })()
+              : "Phone not synced yet";
+
   const syncSessionWithWeight = async (
     session: any,
     actualCalories: number,
@@ -659,9 +664,6 @@ export default function Home() {
         );
       }
 
-      console.log("REST activity sync response:", responseBody);
-
-      // Refetch both queries only after the POST has completed successfully.
       const [historyResult, statusResult] = await Promise.all([
         historyQuery.refetch(),
         syncStatusQuery.refetch(),
@@ -675,7 +677,6 @@ export default function Home() {
         throw statusResult.error;
       }
 
-      // Confirm that the saved activity is visible to the history query.
       const syncedRecords = historyResult.data ?? [];
       const syncedExternalId = updatedSession.externalId;
 
@@ -689,15 +690,8 @@ export default function Home() {
         );
       }
 
-      console.log(
-        "Session synced and confirmed:",
-        updatedSession.externalId,
-      );
-
       return true;
     } catch (error) {
-      console.error("Activity sync error:", error);
-
       setRestSyncError(
         error instanceof Error
           ? error.message
@@ -709,13 +703,8 @@ export default function Home() {
     }
   };
 
-  // ✅ Fixed: toggleTracking
   const toggleTracking = async () => {
     if (isTracking) {
-      /*
-       * Capture everything BEFORE stopping the sensor.
-       * stop() intentionally clears the live GPS route.
-       */
       const sessionStartedAt = phoneSensors.startedAt;
 
       const hasMeaningfulActivity =
@@ -728,9 +717,6 @@ export default function Home() {
       if (!hasMeaningfulActivity) {
         phoneSensors.stop();
         setIsTracking(false);
-        console.log(
-          "Session ignored: no meaningful activity detected.",
-        );
         return;
       }
 
@@ -751,20 +737,9 @@ export default function Home() {
         route: [...phoneSensors.route],
       };
 
-      /*
-       * Now stop the sensors.
-       * The session object already contains the route.
-       */
       phoneSensors.stop();
       setIsTracking(false);
 
-      /*
-       * Save the session temporarily.
-       * It will NOT be queued yet.
-       *
-       * This is important because the final calorie value
-       * depends on the weight entered by the user.
-       */
       setSessionData(session);
       setShowWeightPrompt(true);
 
@@ -777,7 +752,6 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      {/* Sidebar */}
       <aside
         className={`sidebar ${showMobileNav ? "open" : ""}`}
         ref={mobileMenuRef}
@@ -851,21 +825,11 @@ export default function Home() {
           <button
             className="profile"
             onClick={() => {
-              console.log(
-                "Profile clicked - isAuthenticated:",
-                isAuthenticated,
-              );
               if (isAuthenticated) {
-                console.log(
-                  "User is authenticated, showing logout confirm",
-                );
                 if (confirm("Are you sure you want to logout?")) {
                   logout();
                 }
               } else {
-                console.log(
-                  "User not authenticated, opening login modal",
-                );
                 setShowLoginModal(true);
               }
             }}
@@ -884,9 +848,7 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="main-content">
-        {/* Topbar */}
         <header className="topbar">
           <button
             className="mobile-menu"
@@ -920,7 +882,6 @@ export default function Home() {
         </header>
 
         <div className="content-wrap" id="overview-section">
-          {/* Welcome Section */}
           <section className="section-vertical">
             <div className="welcome-section">
               <div>
@@ -965,7 +926,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Daily Pulse */}
           <section className="section-vertical">
             <article className="daily-pulse panel">
               <div className="panel-heading">
@@ -1021,7 +981,7 @@ export default function Home() {
                     </strong>
                     <p>
                       {daily.distanceMeters
-                        ? "From phone GPS or step fallback"
+                        ? "From recorded activity"
                         : "No distance recorded"}
                     </p>
                   </div>
@@ -1055,7 +1015,6 @@ export default function Home() {
             </article>
           </section>
 
-          {/* Current Activity */}
           <section className="section-vertical">
             <article className="now-card panel">
               <div
@@ -1121,7 +1080,6 @@ export default function Home() {
             </article>
           </section>
 
-          {/* Today at a Glance */}
           <section className="section-vertical" id="health-section">
             <article className="metrics-section">
               <div className="section-header">
@@ -1204,7 +1162,6 @@ export default function Home() {
             </article>
           </section>
 
-          {/* Recovery Check-in */}
           <section className="section-vertical">
             <aside className="recovery-card panel">
               <div
@@ -1292,7 +1249,6 @@ export default function Home() {
             </aside>
           </section>
 
-          {/* Activity Trend */}
           <section className="section-vertical" id="analytics-section">
             <article className="activity-chart panel">
               <div className="panel-heading">
@@ -1385,7 +1341,6 @@ export default function Home() {
             </article>
           </section>
 
-          {/* Goals & Tasks */}
           <section className="section-vertical" id="goals-section">
             <article className="goals-card panel">
               <div className="panel-heading">
@@ -1502,7 +1457,6 @@ export default function Home() {
             </article>
           </section>
 
-          {/* Synced History */}
           <section className="section-vertical">
             <div className="history-strip panel" id="history-section">
               <div className="history-heading">
@@ -1604,7 +1558,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Sync Status */}
           <section className="section-vertical">
             <div className="sync-status-card panel" id="sync-section">
               {!isAuthenticated ? (
@@ -1683,7 +1636,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Phone Sensor Session */}
           <section className="section-vertical">
             <div className="sensor-summary panel" id="activity-section">
               <div>
@@ -1736,7 +1688,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Location System */}
           <section className="section-vertical">
             <div
               className="location-strip panel"
@@ -1784,7 +1735,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Smart Features */}
           <section className="section-vertical">
             <div className="smart-row">
               <div className="smart-intro">
@@ -1841,7 +1791,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Footer */}
           <footer className="page-footer">
             <span>
               Roxan Personal Assistant · Personal signals, without invented
@@ -1857,7 +1806,6 @@ export default function Home() {
             </span>
           </footer>
 
-          {/* Goal Modal */}
           {goalDialogOpen && (
             <div
               className="modal-scrim"
@@ -1925,7 +1873,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Task Modal */}
           {taskDialogOpen && (
             <div
               className="modal-scrim"
@@ -1981,21 +1928,17 @@ export default function Home() {
             </div>
           )}
 
-          {/* Login Modal */}
           <LoginModal
             isOpen={showLoginModal}
             onClose={() => {
-              console.log("Closing login modal");
               setShowLoginModal(false);
             }}
             onLogin={(name) => {
-              console.log("Login with name:", name);
               handleLogin(name);
             }}
             isLoading={loading}
           />
 
-          {/* Weight Prompt Modal */}
           <WeightPromptModal
             isOpen={showWeightPrompt}
             onClose={() => {
@@ -2019,16 +1962,6 @@ export default function Home() {
                 calories: actualCalories,
               };
 
-              console.log("Weight saved:", weight);
-              console.log("Final session:", finalSession);
-
-              /*
-               * IMPORTANT:
-               * Queue/sync ONLY after weight is saved.
-               *
-               * ✅ Fixed: if online sync fails, queue locally so
-               * the session is not lost.
-               */
               let synced = false;
               if (phoneSensors.isOnline && isAuthenticated) {
                 synced = await syncSessionWithWeight(
@@ -2040,10 +1973,9 @@ export default function Home() {
               if (!synced) {
                 queueSensorSession(finalSession);
                 setQueuedSessions(readQueuedSessions().length);
-                console.log(
-                  "Session queued locally:",
-                  finalSession.externalId,
-                );
+              } else {
+                removeQueuedSession(finalSession.externalId);
+                setQueuedSessions(readQueuedSessions().length);
               }
 
               setShowWeightPrompt(false);
@@ -2058,7 +1990,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Mobile Backdrop */}
       {showMobileNav && (
         <button
           className="mobile-backdrop"
